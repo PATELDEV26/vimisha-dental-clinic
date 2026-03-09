@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vimisha's Dental Clinic</title>
+  <meta name="description"
+    content="Admin dashboard for Vimisha's Dental Clinic — manage patients, visits, appointments & payments.">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦷</text></svg>">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-brand">
+      <span class="tooth-icon">🦷</span>
+      <div>
+        <h1>Vimisha's Dental Clinic</h1>
+        <span class="header-sub">Admin Dashboard</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="live-date" id="liveDate"></span>
+    </div>
+  </header>
+
+  <!-- ── Navigation ─────────────────────────────────────── -->
+  <nav class="nav" id="mainNav">
+    <button class="nav-btn active" data-page="dashboard">
+      <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-btn" data-page="register">
+      <span class="nav-icon">👤</span><span class="nav-label">Register</span>
+    </button>
+    <button class="nav-btn" data-page="patients">
+      <span class="nav-icon">📋</span><span class="nav-label">Patients</span>
+    </button>
+    <button class="nav-btn" data-page="oldrecords">
+      <span class="nav-icon">📁</span><span class="nav-label">Old Records</span>
+    </button>
+  </nav>
+
+  <!-- ── Flash Message ──────────────────────────────────── -->
+  <div class="flash" id="flashMessage"></div>
+
+  <!-- ── Main Content Container ─────────────────────────── -->
+  <main class="main" id="mainContent">
+
+    <!-- Dashboard -->
+    <section id="page-dashboard" class="page active">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <div class="search-box">
+          <input type="text" id="dashSearch" placeholder="🔍 Quick search by name or case no..." autocomplete="off">
+          <div class="search-results" id="dashSearchResults"></div>
+        </div>
+      </div>
+      <div class="stats-grid" id="statsGrid"></div>
+      <div class="mb-16 flex-end">
+        <button class="btn btn-accent btn-lg" id="dashUploadOldRecordBtn">� Upload Old Record</button>
+      </div>
+      <div class="dashboard-grid">
+        <div class="card recent-patients-card">
+          <h3>🆕 Recent Patients</h3>
+          <div id="recentPatients" class="card-body"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Register Patient -->
+    <section id="page-register" class="page">
+      <div class="page-header">
+        <h2>👤 Register New Patient</h2>
+      </div>
+      <form class="form-card" id="registerForm">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="regCaseNo">Case No</label>
+            <input type="text" id="regCaseNo" placeholder="e.g. K 8 134">
+          </div>
+          <div class="form-group">
+            <label for="regName">Full Name <span class="req">*</span></label>
+            <input type="text" id="regName" required placeholder="Patient full name">
+          </div>
+          <div class="form-group">
+            <label for="regAge">Age</label>
+            <input type="number" id="regAge" min="0" max="150" placeholder="Age">
+          </div>
+          <div class="form-group">
+            <label>Sex</label>
+            <div class="sex-toggle">
+              <label class="sex-pill"><input type="radio" name="regSex" value="M"><span>Male</span></label>
+              <label class="sex-pill"><input type="radio" name="regSex" value="F"><span>Female</span></label>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label for="regAddress">Address</label>
+            <input type="text" id="regAddress" placeholder="Full address">
+          </div>
+          <div class="form-group">
+            <label for="regPhone">Phone</label>
+            <input type="text" id="regPhone" placeholder="Phone number">
+          </div>
+          <div class="form-group">
+            <label for="regReferredBy">Referred By</label>
+            <input type="text" id="regReferredBy" placeholder="Referrer name">
+          </div>
+          <div class="form-group">
+            <label for="regReferrerPhone">Referrer Phone</label>
+            <input type="text" id="regReferrerPhone" placeholder="Referrer phone">
+          </div>
+          <div class="form-group">
+            <label for="regDate">Date of Registration</label>
+            <input type="text" id="regDate" placeholder="Auto-filled to today">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">✅ Register Patient</button>
+      </form>
+    </section>
+
+    <!-- Patient List -->
+    <section id="page-patients" class="page">
+      <div class="page-header">
+        <h2>👥 Patient List</h2>
+        <input type="text" id="patientSearch" placeholder="Search patients..." class="header-search">
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="patientTable">
+          <thead>
+            <tr>
+              <th>Case No</th>
+              <th>Name</th>
+              <th>Age</th>
+              <th>Phone</th>
+              <th>Date Added</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="patientTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Patient Profile -->
+    <section id="page-profile" class="page">
+      <button class="btn btn-ghost back-btn" id="backToPatients">← Back to Patients</button>
+      <div class="profile-grid">
+        <div class="card profile-card" id="profileCard"></div>
+        <div class="profile-right">
+          <!-- Profile Tabs -->
+          <div class="profile-tabs">
+            <button class="profile-tab active" data-tab="visits">🗂️ Visit History</button>
+            <button class="profile-tab" data-tab="oldrecords">📁 Old Records</button>
+          </div>
+
+          <!-- Visits Tab -->
+          <div class="card visit-card profile-tab-content active" id="profileTabVisits">
+            <div class="visit-header">
+              <h3>🗂️ Visit History</h3>
+              <button class="btn btn-primary" id="addVisitBtn">➕ Add Visit</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" id="visitTable">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Work Done</th>
+                    <th>Findings</th>
+                    <th>Payment (₹)</th>
+                    <th>Next Appt</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody id="visitTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Old Records Tab -->
+          <div class="card visit-card profile-tab-content" id="profileTabOldRecords">
+            <div class="visit-header">
+              <h3>📁 Old Records</h3>
+              <button class="btn btn-primary" id="profileUploadOldRecordBtn">📷 Upload Photos</button>
+            </div>
+            <div class="old-records-grid" id="profileOldRecordsGrid"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Appointments -->
+    <section id="page-appointments" class="page">
+      <div class="page-header">
+        <h2>📅 Appointments</h2>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table" id="appointmentsTable">
+          <thead>
+            <tr>
+              <th>Patient Name</th>
+              <th>Case No</th>
+              <th>Appointment Date</th>
+              <th>Time</th>
+              <th>Work Planned</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="appointmentsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Payments -->
+    <section id="page-payments" class="page">
+      <div class="page-header">
+        <h2>💰 Payments Summary</h2>
+        <div class="payment-filters">
+          <input type="date" id="paymentFrom" title="From date">
+          <input type="date" id="paymentTo" title="To date">
+          <button class="btn btn-outline" id="filterPayments">Filter</button>
+          <button class="btn btn-ghost" id="clearPaymentFilter">Clear</button>
+        </div>
+      </div>
+      <div class="payment-total" id="paymentTotal"></div>
+      <div class="table-wrap">
+        <table class="data-table" id="paymentsTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Patient Name</th>
+              <th>Case No</th>
+              <th>Work Done</th>
+              <th>Amount (₹)</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Old Records Archive -->
+    <section id="page-oldrecords" class="page">
+      <div class="page-header">
+        <h2>📁 Old Records Archive</h2>
+        <div class="payment-filters">
+          <input type="text" id="oldRecordSearch" placeholder="Search by patient name..." class="header-search">
+          <button class="btn btn-accent" id="archiveUploadBtn">� Upload Old Record</button>
+        </div>
+      </div>
+      <div class="old-records-stat" id="oldRecordsStat"></div>
+      <div class="old-records-grid" id="archiveOldRecordsGrid"></div>
+    </section>
+
+  </main>
+
+  <!-- ── Visit Modal ────────────────────────────────────── -->
+  <div class="modal-overlay" id="visitModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>➕ Add New Visit</h3>
+        <button class="modal-close" id="closeModal">&times;</button>
+      </div>
+      <form id="visitForm">
+        <input type="hidden" id="visitPatientId">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="visitDate">Visit Date</label>
+            <input type="text" id="visitDate" placeholder="e.g. 9/3/26">
+          </div>
+          <div class="form-group">
+            <label for="visitTime">Visit Time</label>
+            <input type="text" id="visitTime" placeholder="e.g. 10:30">
+          </div>
+          <div class="form-group full-width">
+            <label for="visitWorkDone">Work Done</label>
+            <textarea id="visitWorkDone" rows="3" placeholder="Describe work done..."></textarea>
+          </div>
+          <div class="form-group full-width">
+            <label for="visitFindings">Clinical Findings</label>
+            <textarea id="visitFindings" rows="2" placeholder="e.g. Gingival inflammation, bleeding..."></textarea>
+          </div>
+          <div class="form-group">
+            <label for="visitPayment">Payment Received (₹)</label>
+            <input type="number" id="visitPayment" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label for="visitNextDate">Next Appointment Date</label>
+            <input type="text" id="visitNextDate" placeholder="e.g. 15/4/26">
+          </div>
+          <div class="form-group">
+            <label for="visitNextTime">Next Appointment Time</label>
+            <input type="text" id="visitNextTime" placeholder="e.g. 11:00">
+          </div>
+          <div class="form-group full-width">
+            <label for="visitNotes">Reminder Notes</label>
+            <textarea id="visitNotes" rows="2" placeholder="Any notes..."></textarea>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">💾 Save Visit</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Edit Patient Modal ─────────────────────────────── -->
+  <div class="modal-overlay" id="editPatientModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>✏️ Edit Patient Info</h3>
+        <button class="modal-close" id="closeEditModal">&times;</button>
+      </div>
+      <form id="editPatientForm">
+        <input type="hidden" id="editPatientId">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="editCaseNo">Case No</label>
+            <input type="text" id="editCaseNo">
+          </div>
+          <div class="form-group">
+            <label for="editName">Full Name <span class="req">*</span></label>
+            <input type="text" id="editName" required>
+          </div>
+          <div class="form-group">
+            <label for="editAge">Age</label>
+            <input type="number" id="editAge" min="0" max="150">
+          </div>
+          <div class="form-group">
+            <label>Sex</label>
+            <div class="sex-toggle">
+              <label class="sex-pill"><input type="radio" name="editSex" value="M"><span>Male</span></label>
+              <label class="sex-pill"><input type="radio" name="editSex" value="F"><span>Female</span></label>
+            </div>
+          </div>
+          <div class="form-group full-width">
+            <label for="editAddress">Address</label>
+            <input type="text" id="editAddress">
+          </div>
+          <div class="form-group">
+            <label for="editPhone">Phone</label>
+            <input type="text" id="editPhone">
+          </div>
+          <div class="form-group">
+            <label for="editReferredBy">Referred By</label>
+            <input type="text" id="editReferredBy">
+          </div>
+          <div class="form-group">
+            <label for="editReferrerPhone">Referrer Phone</label>
+            <input type="text" id="editReferrerPhone">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">💾 Update Patient</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Upload Old Record Modal ────────────────────────── -->
+  <div class="modal-overlay" id="oldRecordModal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3>📁 Upload Old Record</h3>
+        <button class="modal-close" id="closeOldRecordModal">&times;</button>
+      </div>
+      <form id="oldRecordForm">
+        <div class="form-grid">
+          <!-- Step 1: Patient Selection -->
+          <div class="form-group full-width">
+            <label>Step 1 — Who is this record for?</label>
+            <div class="or-patient-select">
+              <div class="or-search-wrap">
+                <input type="text" id="orPatientSearch" placeholder="Search existing patient..." autocomplete="off">
+                <div class="search-results" id="orPatientSearchResults"></div>
+                <input type="hidden" id="orPatientId">
+                <div class="or-selected-patient" id="orSelectedPatient" style="display:none"></div>
+              </div>
+              <label class="or-manual-check">
+                <input type="checkbox" id="orManualCheck"> Patient not in system yet
+              </label>
+              <input type="text" id="orManualName" placeholder="Enter patient name manually" style="display:none">
+            </div>
+          </div>
+
+          <!-- Step 2: Record Details -->
+          <div class="form-group">
+            <label for="orRecordDate">Original Record Date</label>
+            <input type="date" id="orRecordDate">
+          </div>
+          <div class="form-group">
+            <label for="orDescription">Description / Notes</label>
+            <input type="text" id="orDescription" placeholder="e.g. X-ray, Old prescription...">
+          </div>
+
+          <!-- Step 3: Photos -->
+          <div class="form-group full-width">
+            <label for="orPhotos">Upload Photo(s)</label>
+            <input type="file" id="orPhotos" accept="image/*" multiple capture="environment" class="file-input">
+            <div class="or-preview" id="orPreview"></div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">📤 Upload & Save</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Lightbox ────────────────────────────────────────── -->
+  <div class="lightbox-overlay" id="lightbox">
+    <button class="lightbox-close" id="lightboxClose">&times;</button>
+    <img id="lightboxImg" src="" alt="Full size record">
+    <div class="lightbox-info" id="lightboxInfo"></div>
+    <a class="btn btn-outline lightbox-download" id="lightboxDownload" href="" download>⬇ Download</a>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

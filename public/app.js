@@ -830,7 +830,7 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
                     Uploaded: ${escapeHtml(r.upload_date)}
                 </div>
                 <div class="or-card-actions">
-                    <a class="btn btn-outline btn-sm" href="${escapeHtml(r.file_path)}" download>⬇ Download</a>
+                    <button class="btn btn-outline btn-sm" onclick="event.preventDefault(); downloadRecordAsPDF('${escapeHtml(patientName)}', '${escapeHtml(r.record_date || '')}', '${escapeHtml(r.description || '')}', '${escapeHtml(r.upload_date)}', '${escapeHtml(r.file_path)}')">⬇ Download PDF</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteOldRecord(${r.id})">🗑 Delete</button>
                 </div>
             </div>
@@ -840,7 +840,10 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
 
 function openLightbox(src, desc, recordDate, uploadDate) {
   document.getElementById('lightboxImg').src = src;
-  document.getElementById('lightboxDownload').href = src;
+  document.getElementById('lightboxDownload').onclick = (e) => {
+    e.preventDefault();
+    downloadRecordAsPDF('Patient Record', recordDate, desc, uploadDate, src);
+  };
   document.getElementById('lightboxInfo').innerHTML = `
         <strong>${escapeHtml(desc) || 'No description'}</strong><br>
         ${recordDate ? 'Original date: ' + escapeHtml(recordDate) + ' · ' : ''}
@@ -859,4 +862,117 @@ async function deleteOldRecord(id) {
     if (activePage && activePage.id === 'page-oldrecords') loadOldRecordsArchive();
     if (activePage && activePage.id === 'page-dashboard') loadDashboard();
   } catch (_) { }
+}
+
+async function downloadRecordAsPDF(patientName, recordDate, description, uploadDate, imageSrc) {
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // Configuration
+    const margin = 20;
+    let currentY = 20;
+
+    // Header Background
+    doc.setFillColor(53, 88, 114); // #355872
+    doc.rect(0, 0, pageWidth, 40, 'F');
+    
+    // Header Text
+    doc.setTextColor(247, 248, 240); // #F7F8F0
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text("Vimisha's Dental Clinic", margin, 20);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text("Patient Medical Record", margin, 30);
+
+    // Reset Text Color
+    doc.setTextColor(53, 88, 114); // #355872
+    currentY = 55;
+
+    // Patient Details
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Patient Name:", margin, currentY);
+    doc.setFont("helvetica", "normal");
+    doc.text(patientName || "—", margin + 35, currentY);
+    currentY += 10;
+
+    if (recordDate) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Record Date:", margin, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.text(recordDate, margin + 35, currentY);
+      currentY += 10;
+    }
+
+    if (description) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Description:", margin, currentY);
+      doc.setFont("helvetica", "normal");
+      // word wrap description
+      const splitDesc = doc.splitTextToSize(description, pageWidth - margin * 2 - 35);
+      doc.text(splitDesc, margin + 35, currentY);
+      currentY += 10 * splitDesc.length;
+    }
+
+    doc.setFontSize(10);
+    doc.setTextColor(122, 170, 206); // #7AAACE
+    doc.text(`Generated on: ${new Date().toLocaleDateString('en-IN')}`, margin, currentY);
+    doc.text(`Uploaded: ${uploadDate || '—'}`, margin, currentY + 6);
+    doc.setTextColor(53, 88, 114); // #355872
+    
+    currentY += 15;
+
+    // Wait for image to load to get dimensions
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = imageSrc;
+    
+    // We must await image load
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    // Calculate dimensions to fit on page
+    const maxWidth = pageWidth - (margin * 2);
+    const maxHeight = pageHeight - currentY - margin;
+    
+    let imgWidth = img.width;
+    let imgHeight = img.height;
+    
+    // Scale image
+    const widthRatio = maxWidth / imgWidth;
+    const heightRatio = maxHeight / imgHeight;
+    const ratio = Math.min(widthRatio, heightRatio); // prevent overflowing either dimension
+    
+    // Only downscale, don't upscale small images
+    if (ratio < 1) {
+      imgWidth = imgWidth * ratio;
+      imgHeight = imgHeight * ratio;
+    }
+    
+    // Draw Border Box around image
+    doc.setDrawColor(156, 213, 255); // #9CD5FF
+    doc.rect(margin - 1, currentY - 1, imgWidth + 2, imgHeight + 2);
+    
+    // Add image
+    doc.addImage(img, 'JPEG', margin, currentY, imgWidth, imgHeight);
+
+    // Footer
+    doc.setFontSize(9);
+    doc.setTextColor(122, 170, 206); // #7AAACE
+    doc.text("Vimisha's Dental Clinic — Confidential Medical Record", pageWidth / 2, pageHeight - 10, { align: "center" });
+
+    // Download
+    const cleanName = (patientName || 'record').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    doc.save(`${cleanName}_dental_record.pdf`);
+
+  } catch (err) {
+    console.error(err);
+    flash("Failed to generate PDF. Check console.", "error");
+  }
 }

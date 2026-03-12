@@ -164,7 +164,7 @@ app.post('/api/visits', (req, res) => {
 
 app.get('/api/payments', (req, res) => {
     const rows = db.prepare(`
-    SELECT v.id, v.visit_date, v.payment, v.work_done, p.name AS patient_name, p.case_no
+    SELECT v.id, v.patient_id, v.visit_date, v.payment, v.work_done, p.name AS patient_name, p.case_no
     FROM visits v
     JOIN patients p ON p.id = v.patient_id
     WHERE v.payment > 0
@@ -215,12 +215,24 @@ app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
 
         const uploadDate = getTodayFormatted();
         const ids = [];
+        let newPatientId = null;
 
         const insertAll = db.transaction(() => {
+            let linkedPatientId = patient_id ? parseInt(patient_id) : null;
+
+            // If manual name provided and no existing patient linked, create a new patient
+            if (!linkedPatientId && patient_name_manual) {
+                const patientInfo = db.prepare(`
+                    INSERT INTO patients (name, created_date) VALUES (?, ?)
+                `).run(patient_name_manual, uploadDate);
+                linkedPatientId = patientInfo.lastInsertRowid;
+                newPatientId = linkedPatientId;
+            }
+
             for (const file of req.files) {
                 const filePath = '/uploads/old_records/' + file.filename;
                 const info = insertRecord.run(
-                    patient_id ? parseInt(patient_id) : null,
+                    linkedPatientId,
                     patient_name_manual || null,
                     record_date || '',
                     uploadDate,
@@ -232,7 +244,7 @@ app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
         });
 
         insertAll();
-        res.json({ ids, message: `${req.files.length} record(s) uploaded successfully` });
+        res.json({ ids, newPatientId, message: `${req.files.length} record(s) uploaded successfully` });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -316,7 +328,7 @@ app.listen(PORT, HOST, () => {
 
     // Write ready signal
     try {
-        require('fs').writeFileSync(require('path').join(__dirname, 'server-ready.txt'), 'RUNNING');
+        fs.writeFileSync(path.join(__dirname, 'server-ready.txt'), 'RUNNING');
     } catch (err) {
         console.error('Could not write server-ready.txt:', err);
     }

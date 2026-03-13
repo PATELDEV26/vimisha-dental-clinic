@@ -1,0 +1,14 @@
+
+> dental-clinic@1.0.0 start
+> node server.js
+
+
+  🦷  Vimisha's Dental Clinic Dashboard
+  ─────────────────────────────────────
+  Local:   http://localhost:3000
+  Network: http://192.168.1.5:3000
+
+  All devices on the same network can access the dashboard
+  using the Network URL above.
+
+^C^C

@@ -47,6 +47,8 @@ html {
   scroll-behavior: smooth;
   scrollbar-width: thin;
   scrollbar-color: var(--primary) var(--bg);
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
 }
 
 html::-webkit-scrollbar {
@@ -72,6 +74,7 @@ body {
   color: var(--text-dark);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 /* ── Typography & Links ─────────────────────────────────────── */
@@ -305,13 +308,14 @@ a:hover {
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--card-bg);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-modal);
-  margin-top: 8px;
-  max-height: 350px;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 200px;
   overflow-y: auto;
-  z-index: 50;
+  z-index: 9999;
+  margin-top: 4px;
   display: none;
 }
 
@@ -599,6 +603,7 @@ a:hover {
   cursor: pointer;
   transition: var(--transition);
   white-space: nowrap;
+  min-height: 44px;
 }
 
 .btn-primary {
@@ -719,6 +724,15 @@ a:hover {
   color: var(--text-dark);
   transition: var(--transition);
   background: white;
+  min-height: 44px;
+}
+
+@media (max-width: 768px) {
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    font-size: 16px;
+  }
 }
 
 .form-group input:focus,
@@ -1021,6 +1035,7 @@ a:hover {
 }
 
 .or-search-wrap {
+  position: relative;
   margin-bottom: 16px;
 }
 
@@ -1082,85 +1097,431 @@ a:hover {
   color: var(--primary);
 }
 
-/* ── Responsive ─────────────────────────────────────────────── */
-@media (max-width: 900px) {
-  .profile-grid {
-    grid-template-columns: 1fr;
-  }
+/* ── COMPREHENSIVE MOBILE RESPONSIVE DESIGN ─────────────────── */
 
-  .profile-card {
-    position: static;
-  }
-}
-
+/* Tablets & Large Phones (≤ 768px) */
 @media (max-width: 768px) {
+  /* ── Main Layout ────────────────────────── */
   .main {
-    padding: 24px 16px 60px;
-  }
-
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .search-box {
-    flex: 1;
-    width: 100%;
-  }
-
-  .header-search {
+    padding: 20px 12px 60px;
     max-width: 100%;
   }
 
+  /* ── Header ──────────────────────────────── */
+  .header {
+    padding: 10px 16px;
+    height: auto;
+    gap: 8px;
+  }
+
+  .header-brand {
+    flex: 1;
+  }
+
+  .header-brand div {
+    gap: 8px !important;
+  }
+
+  .header-brand svg {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .header-brand > div > div:first-child {
+    font-size: 0.9rem !important;
+  }
+
+  .header-brand > div > div:last-child {
+    font-size: 0.6rem !important;
+  }
+
+  .live-date {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+  }
+
+  /* ── Navigation Tabs ────────────────────── */
+  .nav {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 8px 12px;
+    gap: 6px;
+    top: auto;
+    position: static;
+    flex-wrap: nowrap;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-btn {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    padding: 8px 14px;
+    border-radius: var(--radius-pill);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .nav-icon {
+    font-size: 1rem;
+  }
+
+  /* ── Page Header ────────────────────────── */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .page-header h2 {
+    font-size: 1.4rem;
+  }
+
+  /* ── Search Bar ─────────────────────────── */
+  .search-box {
+    width: 100%;
+  }
+
+  .search-box,
+  .header-search {
+    width: 100%;
+    margin-bottom: 12px;
+  }
+
+  /* ── Dashboard Stats ────────────────────── */
   .stats-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 0 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    padding: 14px;
+    gap: 10px;
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
+    margin: 0 auto;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+  }
+
+  /* ── Recent Patients Card ───────────────── */
+  .recent-patients-card {
+    margin: 0 12px;
+  }
+
+  .recent-item {
+    flex-wrap: wrap;
+    padding: 12px 16px;
+  }
+
+  .appt-time {
+    margin-top: 4px;
+    width: 100%;
+  }
+
+  /* ── Patient List Table ──────────────────── */
+  .data-table {
+    font-size: 0.85rem;
+    display: block;
+    overflow-x: auto;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+  }
+
+  .data-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .data-table td:last-child {
+    border-bottom: none;
+  }
+
+  .td-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .td-actions .btn {
+    width: 100%;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    min-height: auto;
+  }
+
+  /* ── Register Form ──────────────────────── */
+  .form-card {
+    margin: 12px;
+    padding: 20px;
+    max-width: 100%;
   }
 
   .form-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
   }
 
-  .modal {
-    max-width: 90%;
+  .form-group input,
+  .form-group textarea {
+    width: 100%;
   }
 
-  .nav {
-    justify-content: flex-start;
+  .form-group.full-width {
+    grid-column: 1;
+  }
+
+  /* ── Buttons ────────────────────────────── */
+  .btn-lg {
+    width: 100%;
+    padding: 14px;
+    font-size: 1rem;
+  }
+
+  .flex-end {
+    justify-content: stretch;
+  }
+
+  .flex-end .btn {
+    width: 100%;
+  }
+
+  /* ── Modals ─────────────────────────────── */
+  .modal-overlay {
+    padding: 10px;
+  }
+
+  .modal,
+  .modal-lg {
+    width: 95vw;
+    max-width: 95vw;
+    margin: 10px auto;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+
+  .modal form {
+    padding: 16px;
+  }
+
+  .modal-header {
+    padding: 16px;
+  }
+
+  .modal-header h3 {
+    font-size: 1.1rem;
+  }
+
+  /* Modal Form Grid ────────────────────────── */
+  .modal .form-grid,
+  .modal form .form-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .modal .form-group,
+  .modal form .form-group {
+    grid-column: 1 !important;
+  }
+
+  .modal button[type="submit"] {
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  /* ── Old Records Page ──────────────────── */
+  .old-records-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .or-card {
+    border-radius: 12px;
+  }
+
+  .or-card-img {
+    height: 120px;
+  }
+
+  /* Dropdowns & Selects ──────────────────── */
+  .search-results {
+    max-height: 180px;
+    border-radius: 8px;
+  }
+
+  .search-result-item {
+    padding: 12px 16px;
+  }
+
+  /* Sex Toggle Pills ────────────────────── */
+  .sex-toggle {
+    gap: 8px;
+  }
+
+  .sex-pill span {
+    padding: 8px;
+    font-size: 0.9rem;
+  }
+
+  /* Profile Page ────────────────────────── */
+  .profile-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .profile-card {
+    position: static;
+    max-width: 100%;
+  }
+
+  .profile-tabs {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .profile-tab {
+    padding: 10px 16px;
+    font-size: 0.95rem;
+  }
+
+  /* Old Records in Modal */
+  .or-search-wrap input {
+    font-size: 16px;
+  }
+
+  .or-selected-patient {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .or-manual-check {
+    font-size: 0.9rem;
+  }
+
+  /* Lightning Box ────────────────────────── */
+  .lightbox-overlay {
+    padding: 20px 10px;
+  }
+
+  #lightboxImg {
+    max-width: 95vw;
+    max-height: 60vh;
+  }
+
+  .lightbox-close {
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    font-size: 1.5rem;
   }
 }
 
-@media (max-width: 480px) {
+/* Small Phones (≤ 400px) */
+@media (max-width: 400px) {
+  .main {
+    padding: 16px 8px 60px;
+  }
+
   .header {
-    padding: 8px 12px;
+    padding: 8px 10px;
   }
 
-  .nav {
-    padding: 6px 4px;
-  }
-
-  .nav-btn {
-    flex-direction: column;
-    gap: 2px;
-    padding: 6px;
-    font-size: 0.75rem;
+  .header-brand svg {
+    width: 35px !important;
+    height: 35px !important;
   }
 
   .stats-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 8px;
+    padding: 0 8px;
   }
 
   .stat-card {
-    flex-direction: column;
-    text-align: center;
-    padding: 14px 10px;
+    padding: 10px;
   }
 
-  .flash {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    max-width: none;
+  .stat-value {
+    font-size: 1.4rem;
+  }
+
+  .page-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .form-card {
+    padding: 16px 12px;
+    margin: 8px;
+  }
+
+  .btn-lg {
+    padding: 12px 16px;
+    font-size: 0.95rem;
+  }
+
+  .modal {
+    width: 98vw;
+    max-width: 98vw;
+  }
+
+  .modal form {
+    padding: 12px;
+  }
+
+  .old-records-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .data-table td {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+
+  .search-results {
+    max-height: 150px;
+    margin-top: 2px;
   }
 }
 

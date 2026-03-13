@@ -730,6 +730,7 @@ function setupOldRecords() {
     const formData = new FormData();
     if (patientId) formData.append('patient_id', patientId);
     formData.append('patient_name_manual', isManual ? manualName : '');
+    formData.append('case_no', document.getElementById('orCaseNo').value.trim());
     formData.append('record_date', document.getElementById('orRecordDate').value);
     formData.append('description', document.getElementById('orDescription').value.trim());
     for (const file of files) {
@@ -824,6 +825,7 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
                  onclick="openLightbox('${escapeHtml(r.file_path)}', '${escapeHtml(r.description)}', '${escapeHtml(r.record_date)}', '${escapeHtml(r.upload_date)}')">
             <div class="or-card-body">
                 ${!isProfile ? `<div class="or-card-patient">${escapeHtml(patientName)}</div>` : ''}
+                ${r.case_no ? `<div class="or-card-case" style="color: var(--primary); font-weight: 700; margin-bottom: 4px; font-size: 0.9rem;">Case: ${escapeHtml(r.case_no)}</div>` : ''}
                 <div class="or-card-desc">${escapeHtml(r.description) || 'No description'}</div>
                 <div class="or-card-meta">
                     ${r.record_date ? 'Record: ' + escapeHtml(r.record_date) + ' · ' : ''}

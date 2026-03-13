@@ -11,4 +11,3 @@
   All devices on the same network can access the dashboard
   using the Network URL above.
 
-^C^C

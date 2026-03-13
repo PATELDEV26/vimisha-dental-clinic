@@ -41,6 +41,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     patient_id INTEGER,
     patient_name_manual TEXT,
+    case_no TEXT,
     record_date TEXT,
     upload_date TEXT,
     description TEXT,

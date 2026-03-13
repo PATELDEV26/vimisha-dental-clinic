@@ -203,14 +203,14 @@ app.get('/api/stats', (req, res) => {
 // POST upload old record(s)
 app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
     try {
-        const { patient_id, patient_name_manual, record_date, description } = req.body;
+        const { patient_id, patient_name_manual, case_no, record_date, description } = req.body;
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'At least one photo is required' });
         }
 
         const insertRecord = db.prepare(`
-      INSERT INTO old_records (patient_id, patient_name_manual, record_date, upload_date, description, file_path)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO old_records (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
 
         const uploadDate = getTodayFormatted();
@@ -234,6 +234,7 @@ app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
                 const info = insertRecord.run(
                     linkedPatientId,
                     patient_name_manual || null,
+                    case_no || null,
                     record_date || '',
                     uploadDate,
                     description || '',

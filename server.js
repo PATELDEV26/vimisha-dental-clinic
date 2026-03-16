@@ -2,7 +2,9 @@ const express = require('express');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const { Writable } = require('stream');
 const multer = require('multer');
+const PDFDocument = require('pdfkit');
 const db = require('./database');
 
 const app = express();
@@ -19,20 +21,33 @@ if (!fs.existsSync(uploadsDir)) {
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),
     filename: (req, file, cb) => {
-        const name = (req.body.patient_name_manual || 'record')
-            .toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').slice(0, 30);
-        const ext = path.extname(file.originalname) || '.jpg';
-        cb(null, `${name}_${Date.now()}${ext}`);
+        try {
+            const raw = (req.body && req.body.patient_name_manual) || 'record';
+            const name = String(raw)
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '_')
+                .replace(/_+/g, '_')
+                .slice(0, 30) || 'record';
+            const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
+            cb(null, `${name}_${Date.now()}${ext}`);
+        } catch (e) {
+            cb(e);
+        }
     }
 });
 const upload = multer({
     storage,
     limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
     fileFilter: (req, file, cb) => {
-        const allowed = /jpeg|jpg|png|gif|webp|bmp|heic/;
-        const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-        const mime = allowed.test(file.mimetype.split('/')[1]);
-        cb(null, ext || mime);
+        try {
+            const allowed = /jpeg|jpg|png|gif|webp|bmp|heic/;
+            const ext = path.extname(file.originalname || '').toLowerCase().replace(/^\./, '');
+            const mimePart = (file.mimetype || '').split('/')[1] || '';
+            const ok = allowed.test(ext) || allowed.test(mimePart);
+            cb(null, !!ok);
+        } catch (e) {
+            cb(e);
+        }
     }
 });
 
@@ -51,29 +66,39 @@ function getTodayFormatted() {
 //  PATIENTS
 // ════════════════════════════════════════════════════════════════
 
-// GET all patients
+// GET all patients (search: name, case_no, or phone – partial match)
 app.get('/api/patients', (req, res) => {
-    const search = req.query.search || '';
+    const search = (req.query.search || '').trim();
     let rows;
     if (search) {
+        const pattern = `%${search}%`;
+        // Normalize phone for matching: strip spaces/dashes so "902" matches "902-318-5235" or "902 318 5235"
         rows = db.prepare(`
       SELECT * FROM patients
-      WHERE name LIKE @q OR case_no LIKE @q
+      WHERE name LIKE @q
+         OR case_no LIKE @q
+         OR phone LIKE @q
+         OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
       ORDER BY id DESC
-    `).all({ q: `%${search}%` });
+    `).all({ q: pattern });
     } else {
         rows = db.prepare('SELECT * FROM patients ORDER BY id DESC').all();
     }
     res.json(rows);
 });
 
-// GET single patient + visits
+// GET single patient + treatments (with seatings) + oldRecords
 app.get('/api/patients/:id', (req, res) => {
     const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(req.params.id);
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const visits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
+    const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
+    const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
+    const treatmentsWithSeatings = treatments.map(t => ({
+        ...t,
+        seatings: allVisits.filter(v => v.treatment_id === t.id)
+    }));
     const oldRecords = db.prepare('SELECT * FROM old_records WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    res.json({ patient, visits, oldRecords });
+    res.json({ patient, treatments: treatmentsWithSeatings, oldRecords });
 });
 
 // POST create patient
@@ -114,12 +139,249 @@ app.put('/api/patients/:id', (req, res) => {
 // DELETE patient
 app.delete('/api/patients/:id', (req, res) => {
     db.prepare('DELETE FROM visits WHERE patient_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM treatments WHERE patient_id = ?').run(req.params.id);
     db.prepare('DELETE FROM patients WHERE id = ?').run(req.params.id);
     res.json({ message: 'Patient deleted' });
 });
 
 // ════════════════════════════════════════════════════════════════
-//  VISITS
+//  TREATMENTS
+// ════════════════════════════════════════════════════════════════
+
+// GET treatments for a patient (optional; profile already includes these)
+app.get('/api/patients/:id/treatments', (req, res) => {
+    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(req.params.id);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
+    const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
+    const withSeatings = treatments.map(t => ({
+        ...t,
+        seatings: allVisits.filter(v => v.treatment_id === t.id)
+    }));
+    res.json(withSeatings);
+});
+
+// POST create treatment
+app.post('/api/treatments', (req, res) => {
+    const { patient_id, name, description, created_date } = req.body;
+    const pid = patient_id != null ? parseInt(patient_id, 10) : NaN;
+    if (!name || (typeof name === 'string' && !name.trim())) return res.status(400).json({ error: 'Treatment name is required' });
+    if (!pid || isNaN(pid)) return res.status(400).json({ error: 'Patient ID is required' });
+    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(pid);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const info = db.prepare(`
+    INSERT INTO treatments (patient_id, name, description, created_date)
+    VALUES (?, ?, ?, ?)
+  `).run(pid, (name && name.trim()) || name, description || null, (created_date && created_date.trim()) || getTodayFormatted());
+    res.json({ id: info.lastInsertRowid, message: 'Treatment created', seatings: [] });
+});
+
+// GET treatment report as PDF (patient + treatment + seatings) – must be before /:id
+app.get('/api/treatments/:id/pdf', (req, res) => {
+    const treatmentId = req.params.id;
+    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(treatmentId);
+    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(treatment.patient_id);
+    if (!patient) return res.status(404).json({ error: 'Patient not found' });
+    const seatings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY visit_date, id').all(treatmentId);
+
+    const safe = (s) => (s == null || s === '' ? '-' : String(s));
+    const safeFilename = (s) => (s || 'report').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
+    const truncateToWidth = (doc, str, maxWidth) => {
+        const s = String(str || '-');
+        if (typeof doc.widthOfString !== 'function') {
+            const maxChars = Math.max(8, Math.floor(maxWidth / 4));
+            return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..';
+        }
+        if (doc.widthOfString(s) <= maxWidth) return s;
+        let t = s;
+        while (t.length > 0 && doc.widthOfString(t + '..') > maxWidth) t = t.slice(0, -1);
+        return t.length < s.length ? t + '..' : t;
+    };
+    const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_report.pdf`;
+
+    const chunks = [];
+    const bufferStream = new Writable({
+        write(chunk, encoding, callback) {
+            chunks.push(chunk);
+            callback();
+        }
+    });
+
+    const sendError = (msg) => {
+        if (!res.headersSent) res.status(500).json({ error: msg || 'Failed to generate PDF' });
+    };
+
+    bufferStream.on('finish', () => {
+        if (res.headersSent) return;
+        const buf = Buffer.concat(chunks);
+        res.writeHead(200, {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${filename}"`,
+            'Content-Length': buf.length
+        });
+        res.end(buf);
+    });
+    bufferStream.on('error', () => sendError('PDF stream error'));
+
+    const doc = new PDFDocument({ margin: 48 });
+    doc.on('error', () => sendError('PDF generation error'));
+    doc.pipe(bufferStream);
+
+    try {
+        // Theme: match website (Deep Teal, Warm Orange, Soft Grey-Blue)
+        const theme = {
+            primary: '#0B6E6E',
+            primaryLight: '#E8F5F5',
+            accent: '#F4A261',
+            bg: '#F0F4F8',
+            cardBg: '#FFFFFF',
+            textDark: '#1A2B3C',
+            textMuted: '#6B7A8D',
+            border: '#E2E8F0'
+        };
+
+        const margin = 48;
+        const lineHeight = 14;
+        const sectionGap = 24;
+        const headingSize = 11;
+        const bodySize = 10;
+        let y = margin;
+        const pageWidth = doc.page.width - margin * 2;
+
+        // Header bar (primary teal) + accent line (orange), matching site header
+        doc.fillColor(theme.primary).rect(0, 0, doc.page.width, 52, 'F');
+        doc.fillColor(theme.accent).rect(0, 52, doc.page.width, 3, 'F');
+        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("Vimisha's Dental Clinic", margin, 16);
+        doc.font('Helvetica').fontSize(11).text('Treatment Report', margin, 34);
+        y = 70;
+
+        // Patient details
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Patient Details', margin, y);
+        y += lineHeight + 4;
+        doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
+        const referredVal = [patient.referred_by, patient.referrer_phone ? `(${patient.referrer_phone})` : ''].filter(Boolean).join(' ') || '-';
+        const patientLines = [
+            ['Name', patient.name],
+            ['Case No.', patient.case_no],
+            ['Age', patient.age],
+            ['Sex', patient.sex === 'M' ? 'Male' : patient.sex === 'F' ? 'Female' : patient.sex],
+            ['Address', patient.address],
+            ['Phone', patient.phone],
+            ['Referred by', referredVal],
+            ['Registered', patient.created_date]
+        ];
+        patientLines.forEach(([label, val]) => {
+            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text(`${label}: `, margin, y, { continued: true });
+            doc.font('Helvetica').fillColor(theme.textDark).text(safe(val));
+            y += lineHeight;
+        });
+        y += sectionGap;
+
+        // Treatment details
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Treatment Details', margin, y);
+        y += lineHeight + 4;
+        doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
+        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Name: ', margin, y, { continued: true });
+        doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.name));
+        y += lineHeight;
+        if (treatment.description) {
+            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Description: ', margin, y, { continued: true });
+            doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.description));
+            y += lineHeight;
+        }
+        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Started: ', margin, y, { continued: true });
+        doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.created_date));
+        y += sectionGap;
+
+        // Seatings
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Seatings / Visit Log', margin, y);
+        y += lineHeight + 6;
+
+        const rowHeight = 22;
+        const cellPadding = 6;
+        const colWidths = [44, 32, 72, 58, 42, 52, 58];
+
+        if (seatings.length === 0) {
+            doc.font('Helvetica').fontSize(bodySize).fillColor(theme.textMuted).text('No seatings recorded for this treatment.', margin, y);
+        } else {
+            const headers = ['Date', 'Time', 'Work Done', 'Findings', 'Payment', 'Next Appt', 'Notes'];
+            const tableTop = y;
+
+            // Table header (primary-light bg, primary text, site border)
+            doc.rect(margin, tableTop, pageWidth, rowHeight).fillAndStroke(theme.primaryLight, theme.border);
+            doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(9);
+            let x = margin + cellPadding;
+            headers.forEach((h, i) => {
+                doc.text(h, x, tableTop + 6, { width: colWidths[i], lineBreak: false });
+                x += colWidths[i];
+            });
+            y = tableTop + rowHeight;
+
+            for (let i = 0; i < seatings.length; i++) {
+                const s = seatings[i];
+                if (y > doc.page.height - 72) {
+                    doc.addPage();
+                    y = margin;
+                }
+                const rowY = y;
+                const fill = i % 2 === 0 ? theme.bg : theme.cardBg;
+                doc.rect(margin, rowY, pageWidth, rowHeight).fillAndStroke(fill, theme.border);
+                doc.fillColor(theme.textDark).font('Helvetica').fontSize(9);
+                x = margin + cellPadding;
+                const paymentStr = s.payment ? 'Rs.' + Number(s.payment).toLocaleString('en-IN') : '-';
+                const nextApptStr = s.next_appointment_date ? safe(s.next_appointment_date) + (s.next_appointment_time ? ' ' + s.next_appointment_time : '') : '-';
+                const cells = [safe(s.visit_date), safe(s.visit_time), safe(s.work_done), safe(s.findings), paymentStr, nextApptStr, safe(s.notes)];
+                cells.forEach((cell, ci) => {
+                    const cellWidth = colWidths[ci] - 2;
+                    const text = truncateToWidth(doc, cell, cellWidth);
+                    doc.text(text, x, rowY + 6, { width: cellWidth, lineBreak: false });
+                    x += colWidths[ci];
+                });
+                y += rowHeight;
+            }
+        }
+
+        // Footer (text-muted, matching site)
+        const footerY = doc.page.height - 36;
+        doc.fillColor(theme.textMuted).font('Helvetica').fontSize(9);
+        doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin, footerY);
+        doc.text("Vimisha's Dental Clinic — Confidential Treatment Record", margin, footerY + 12, { width: pageWidth, align: 'center' });
+
+        doc.end();
+    } catch (err) {
+        if (!res.headersSent) res.status(500).json({ error: 'PDF generation failed', detail: err.message });
+    }
+});
+
+// GET single treatment with seatings
+app.get('/api/treatments/:id', (req, res) => {
+    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
+    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+    const seatings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY id DESC').all(req.params.id);
+    res.json({ ...treatment, seatings });
+});
+
+// PUT update treatment
+app.put('/api/treatments/:id', (req, res) => {
+    const { name, description } = req.body;
+    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
+    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+    db.prepare('UPDATE treatments SET name = ?, description = ? WHERE id = ?').run(name ?? treatment.name, description !== undefined ? description : treatment.description, req.params.id);
+    res.json({ message: 'Treatment updated' });
+});
+
+// DELETE treatment (visits under it are deleted by app or cascade)
+app.delete('/api/treatments/:id', (req, res) => {
+    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
+    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+    db.prepare('DELETE FROM visits WHERE treatment_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM treatments WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Treatment deleted' });
+});
+
+// ════════════════════════════════════════════════════════════════
+//  VISITS (seatings)
 // ════════════════════════════════════════════════════════════════
 
 // GET today's appointments
@@ -147,15 +409,48 @@ app.get('/api/visits/upcoming', (req, res) => {
     res.json(rows);
 });
 
-// POST create visit
+// POST create visit (seating) – requires treatment_id
 app.post('/api/visits', (req, res) => {
-    const { patient_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
-    if (!patient_id) return res.status(400).json({ error: 'Patient ID is required' });
+    const { treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    if (!treatment_id) return res.status(400).json({ error: 'Treatment ID is required' });
+    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(treatment_id);
+    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+    const patient_id = treatment.patient_id;
     const info = db.prepare(`
-    INSERT INTO visits (patient_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(patient_id, visit_date || getTodayFormatted(), visit_time, work_done, findings, payment || 0, next_appointment_date, next_appointment_time, notes);
-    res.json({ id: info.lastInsertRowid, message: 'Visit recorded successfully' });
+    INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(patient_id, treatment_id, visit_date || getTodayFormatted(), visit_time, work_done, findings, payment || 0, next_appointment_date, next_appointment_time, notes);
+    res.json({ id: info.lastInsertRowid, message: 'Seating recorded successfully' });
+});
+
+// PUT update visit (seating)
+app.put('/api/visits/:id', (req, res) => {
+    const { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    db.prepare(`
+    UPDATE visits SET visit_date = ?, visit_time = ?, work_done = ?, findings = ?, payment = ?, next_appointment_date = ?, next_appointment_time = ?, notes = ?
+    WHERE id = ?
+  `).run(
+        visit_date !== undefined ? visit_date : visit.visit_date,
+        visit_time !== undefined ? visit_time : visit.visit_time,
+        work_done !== undefined ? work_done : visit.work_done,
+        findings !== undefined ? findings : visit.findings,
+        payment !== undefined ? (parseInt(payment, 10) || 0) : visit.payment,
+        next_appointment_date !== undefined ? next_appointment_date : visit.next_appointment_date,
+        next_appointment_time !== undefined ? next_appointment_time : visit.next_appointment_time,
+        notes !== undefined ? notes : visit.notes,
+        req.params.id
+    );
+    res.json({ message: 'Visit updated' });
+});
+
+// DELETE visit (seating)
+app.delete('/api/visits/:id', (req, res) => {
+    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
+    if (!visit) return res.status(404).json({ error: 'Visit not found' });
+    db.prepare('DELETE FROM visits WHERE id = ?').run(req.params.id);
+    res.json({ message: 'Visit deleted' });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -200,10 +495,15 @@ app.get('/api/stats', (req, res) => {
 //  OLD RECORDS
 // ════════════════════════════════════════════════════════════════
 
-// POST upload old record(s)
-app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
+// POST upload old record(s) – multer errors handled by error middleware below
+app.post('/api/old-records/upload', (req, res, next) => {
+    upload.array('photos', 10)(req, res, (err) => {
+        if (err) return next(err);
+        next();
+    });
+}, (req, res, next) => {
     try {
-        const { patient_id, patient_name_manual, case_no, record_date, description } = req.body;
+        const { patient_id, patient_name_manual, case_no, record_date, description } = req.body || {};
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'At least one photo is required' });
         }
@@ -218,7 +518,7 @@ app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
         let newPatientId = null;
 
         const insertAll = db.transaction(() => {
-            let linkedPatientId = patient_id ? parseInt(patient_id) : null;
+            let linkedPatientId = patient_id ? parseInt(patient_id, 10) : null;
 
             // If manual name provided and no existing patient linked, create a new patient
             if (!linkedPatientId && patient_name_manual) {
@@ -247,7 +547,7 @@ app.post('/api/old-records/upload', upload.array('photos', 10), (req, res) => {
         insertAll();
         res.json({ ids, newPatientId, message: `${req.files.length} record(s) uploaded successfully` });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        next(err);
     }
 });
 
@@ -287,14 +587,28 @@ app.delete('/api/old-records/:id', (req, res) => {
     const record = db.prepare('SELECT * FROM old_records WHERE id = ?').get(req.params.id);
     if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    // Delete the file from disk
-    const fullPath = path.join(__dirname, record.file_path);
-    if (fs.existsSync(fullPath)) {
+    // Delete the file from disk (file_path is stored as /uploads/old_records/filename)
+    const filename = record.file_path ? path.basename(record.file_path) : '';
+    const fullPath = filename ? path.join(uploadsDir, filename) : null;
+    if (fullPath && fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
     }
 
     db.prepare('DELETE FROM old_records WHERE id = ?').run(req.params.id);
     res.json({ message: 'Record deleted' });
+});
+
+// ── Error handler for API (e.g. multer / upload errors) ─────────
+app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    const isApi = (req.path || '').startsWith('/api/');
+    const status = err.code === 'LIMIT_FILE_SIZE' || err.code === 'LIMIT_FILE_COUNT' || (err instanceof multer.MulterError)
+        ? 400
+        : 500;
+    const message = err.message || 'Internal server error';
+    if (status === 500) console.error('Upload/API error:', err);
+    if (isApi) return res.status(status).json({ error: message });
+    res.status(status).send(message);
 });
 
 // ── SPA fallback ───────────────────────────────────────────────

@@ -5,6 +5,9 @@
 
 // ── State ──────────────────────────────────────────────────────
 let currentPatientId = null;
+let currentTreatmentId = null;
+let currentTreatmentViewId = null; // when set, profile shows this treatment's seatings
+let currentProfileTreatments = []; // treatments with seatings, set in loadProfile
 
 // ── Helpers ────────────────────────────────────────────────────
 function getTodayFormatted() {
@@ -98,7 +101,7 @@ function navigateTo(page) {
   // Load data for the page
   switch (page) {
     case 'dashboard': loadDashboard(); break;
-    case 'patients': loadPatients(); break;
+    case 'patients': loadPatients(document.getElementById('patientSearch')?.value?.trim() || ''); break;
     case 'appointments': loadAppointments(); break;
     case 'payments': loadPayments(); break;
     case 'oldrecords': loadOldRecordsArchive(); break;
@@ -262,7 +265,7 @@ async function loadPatients(search = '') {
 }
 
 async function deletePatient(id, name) {
-  if (!confirm(`Are you sure you want to delete patient "${name}" and all their visits?`)) return;
+  if (!confirm(`Are you sure you want to delete patient "${name}" and all their treatments and seatings?`)) return;
   try {
     await api(`/api/patients/${id}`, { method: 'DELETE' });
     flash('Patient deleted successfully');
@@ -274,9 +277,11 @@ async function deletePatient(id, name) {
 //  PATIENT PROFILE
 // ══════════════════════════════════════════════════════════════
 
-async function loadProfile(id) {
+async function loadProfile(id, options = {}) {
   try {
-    const { patient, visits, oldRecords } = await api(`/api/patients/${id}`);
+    const { patient, treatments, oldRecords } = await api(`/api/patients/${id}`);
+    currentProfileTreatments = treatments || [];
+    currentTreatmentViewId = options.keepTreatmentView != null ? options.keepTreatmentView : null;
 
     // Profile card
     document.getElementById('profileCard').innerHTML = `
@@ -314,35 +319,183 @@ async function loadProfile(id) {
       </div>
     `;
 
-    // Visit table
-    const vtbody = document.getElementById('visitTableBody');
-    if (visits.length === 0) {
-      vtbody.innerHTML = `<tr><td colspan="7" class="text-center empty-state">No visits recorded yet</td></tr>`;
-    } else {
-      vtbody.innerHTML = visits.map(v => `
-        <tr>
-          <td>${escapeHtml(v.visit_date)}</td>
-          <td>${escapeHtml(v.visit_time) || '—'}</td>
-          <td>${escapeHtml(v.work_done) || '—'}</td>
-          <td>${escapeHtml(v.findings) || '—'}</td>
-          <td>${v.payment ? '₹' + v.payment.toLocaleString('en-IN') : '—'}</td>
-          <td>${v.next_appointment_date ? escapeHtml(v.next_appointment_date) + (v.next_appointment_time ? ' at ' + escapeHtml(v.next_appointment_time) : '') : '—'}</td>
-          <td>${escapeHtml(v.notes) || '—'}</td>
-        </tr>
-      `).join('');
-    }
+    renderTreatmentsContent(id);
 
     // Old Records in profile
     renderOldRecordsGrid(oldRecords || [], 'profileOldRecordsGrid', true);
 
-    // Store patient ID for the add-visit button
-    document.getElementById('visitPatientId').value = id;
-
-    // Reset tab to visits
+    // Reset tab to treatments
     document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
-    document.querySelector('.profile-tab[data-tab="visits"]').classList.add('active');
+    document.querySelector('.profile-tab[data-tab="treatments"]').classList.add('active');
     document.querySelectorAll('.profile-tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById('profileTabVisits').classList.add('active');
+    document.getElementById('profileTabTreatments').classList.add('active');
+  } catch (_) { }
+}
+
+function renderTreatmentsContent(patientId) {
+  const container = document.getElementById('treatmentsContainer');
+  const treatments = currentProfileTreatments || [];
+  const profileGrid = document.querySelector('.profile-grid');
+
+  // Viewing a specific treatment's seatings – hide patient card so seatings get full width
+  if (currentTreatmentViewId != null) {
+    if (profileGrid) profileGrid.classList.add('profile-viewing-seatings');
+    const t = treatments.find(tr => tr.id === currentTreatmentViewId);
+    if (!t) {
+      currentTreatmentViewId = null;
+      renderTreatmentsContent(patientId);
+      return;
+    }
+    const seatings = t.seatings || [];
+    const seatingsRows = seatings.length === 0
+      ? `<tr><td colspan="8" class="text-center empty-state">No seatings yet. Add one below.</td></tr>`
+      : seatings.map(s => `
+        <tr>
+          <td>${escapeHtml(s.visit_date)}</td>
+          <td>${escapeHtml(s.visit_time) || '—'}</td>
+          <td>${escapeHtml(s.work_done) || '—'}</td>
+          <td>${escapeHtml(s.findings) || '—'}</td>
+          <td>${s.payment ? '₹' + s.payment.toLocaleString('en-IN') : '—'}</td>
+          <td>${s.next_appointment_date ? escapeHtml(s.next_appointment_date) + (s.next_appointment_time ? ' at ' + escapeHtml(s.next_appointment_time) : '') : '—'}</td>
+          <td>${escapeHtml(s.notes) || '—'}</td>
+          <td class="td-actions">
+            <button type="button" class="btn btn-outline btn-sm" data-action="edit-seating" data-visit-id="${s.id}">✏️ Edit</button>
+            <button type="button" class="btn btn-danger btn-sm" data-action="delete-seating" data-visit-id="${s.id}">🗑️ Delete</button>
+          </td>
+        </tr>
+      `).join('');
+
+    container.innerHTML = `
+      <div class="treatment-detail-view">
+        <button type="button" class="btn btn-ghost back-btn" data-action="back-to-treatments">← Back to treatments</button>
+        <div class="treatment-detail-header">
+          <h4 class="treatment-name">${escapeHtml(t.name)}</h4>
+          ${t.description ? `<p class="treatment-description">${escapeHtml(t.description)}</p>` : ''}
+          <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
+          <div class="treatment-detail-actions">
+            <button type="button" class="btn btn-primary" data-action="add-seating" data-treatment-id="${t.id}" data-treatment-name="${escapeHtml(t.name)}">➕ Add Seating</button>
+            <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
+            <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit treatment</button>
+            <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete treatment</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table seating-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Time</th>
+                <th>Work Done</th>
+                <th>Findings</th>
+                <th>Payment (₹)</th>
+                <th>Next Appt</th>
+                <th>Notes</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>${seatingsRows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  if (profileGrid) profileGrid.classList.remove('profile-viewing-seatings');
+
+  // List of treatments (no seatings inline)
+  if (treatments.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state treatments-empty">
+        <span class="empty-icon">🦷</span>
+        <p>No treatments yet. Add a treatment to start recording seatings.</p>
+        <p class="treatments-empty-hint">Workflow: Create a treatment → View it → Add seatings.</p>
+        <button type="button" class="btn btn-primary btn-lg" id="emptyStateAddTreatmentBtn">➕ Add your first treatment</button>
+      </div>
+    `;
+    const btn = document.getElementById('emptyStateAddTreatmentBtn');
+    if (btn) btn.addEventListener('click', () => {
+      document.getElementById('addTreatmentForm').reset();
+      document.getElementById('treatmentCreatedDate').value = getTodayFormatted();
+      document.getElementById('addTreatmentModal').classList.add('show');
+    });
+    return;
+  }
+
+  container.innerHTML = treatments.map(t => `
+    <div class="treatment-card" data-treatment-id="${t.id}">
+      <div class="treatment-card-header">
+        <div>
+          <h4 class="treatment-name">${escapeHtml(t.name)}</h4>
+          ${t.description ? `<p class="treatment-description">${escapeHtml(t.description)}</p>` : ''}
+          <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
+        </div>
+        <div class="treatment-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-action="view-treatment" data-treatment-id="${t.id}">👁️ View seatings</button>
+          <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
+          <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit</button>
+          <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openAddSeatingModal(treatmentId, treatmentName) {
+  const tid = parseInt(treatmentId, 10);
+  if (!tid) return;
+  currentTreatmentId = tid;
+  document.getElementById('visitModalTitle').textContent = '➕ Add Seating' + (treatmentName ? ` — ${treatmentName}` : '');
+  document.getElementById('visitForm').reset();
+  document.getElementById('visitEditId').value = '';
+  document.getElementById('visitTreatmentId').value = tid;
+  document.getElementById('visitDate').value = getTodayFormatted();
+  document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Seating';
+  document.getElementById('visitModal').classList.add('show');
+}
+
+function openEditSeatingModal(visitId) {
+  const id = parseInt(visitId, 10);
+  const seating = currentProfileTreatments.flatMap(t => (t.seatings || []).map(s => ({ ...s, treatment_id: t.id }))).find(s => s.id === id);
+  if (!seating) return;
+  document.getElementById('visitModalTitle').textContent = '✏️ Edit Seating';
+  document.getElementById('visitEditId').value = seating.id;
+  document.getElementById('visitTreatmentId').value = seating.treatment_id;
+  document.getElementById('visitDate').value = seating.visit_date || '';
+  document.getElementById('visitTime').value = seating.visit_time || '';
+  document.getElementById('visitWorkDone').value = seating.work_done || '';
+  document.getElementById('visitFindings').value = seating.findings || '';
+  document.getElementById('visitPayment').value = seating.payment || 0;
+  document.getElementById('visitNextDate').value = seating.next_appointment_date || '';
+  document.getElementById('visitNextTime').value = seating.next_appointment_time || '';
+  document.getElementById('visitNotes').value = seating.notes || '';
+  document.getElementById('visitFormSubmitBtn').textContent = '💾 Update Seating';
+  document.getElementById('visitModal').classList.add('show');
+}
+
+async function deleteSeating(visitId, patientId) {
+  if (!confirm('Delete this seating record?')) return;
+  try {
+    await api(`/api/visits/${visitId}`, { method: 'DELETE' });
+    flash('Seating deleted.');
+    loadProfile(patientId != null ? patientId : currentPatientId, { keepTreatmentView: currentTreatmentViewId });
+  } catch (_) { }
+}
+
+function openEditTreatmentModal(id, name, description) {
+  document.getElementById('editTreatmentId').value = id;
+  document.getElementById('editTreatmentName').value = name || '';
+  document.getElementById('editTreatmentDescription').value = description || '';
+  document.getElementById('editTreatmentModal').classList.add('show');
+}
+
+async function deleteTreatment(treatmentId, patientId, name) {
+  if (!confirm(`Delete treatment "${name}" and all its seatings?`)) return;
+  try {
+    await api(`/api/treatments/${treatmentId}`, { method: 'DELETE' });
+    flash('Treatment deleted.');
+    currentTreatmentViewId = null;
+    loadProfile(patientId);
   } catch (_) { }
 }
 
@@ -380,28 +533,36 @@ function setupForms() {
     } catch (_) { }
   });
 
-  // Visit form
+  // Visit / Seating form (add or edit)
   document.getElementById('visitForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const patientId = document.getElementById('visitPatientId').value;
+    const editId = document.getElementById('visitEditId').value;
+    const treatmentId = document.getElementById('visitTreatmentId').value;
 
     const body = {
-      patient_id: parseInt(patientId),
       visit_date: document.getElementById('visitDate').value.trim(),
       visit_time: document.getElementById('visitTime').value.trim(),
       work_done: document.getElementById('visitWorkDone').value.trim(),
       findings: document.getElementById('visitFindings').value.trim(),
-      payment: parseInt(document.getElementById('visitPayment').value) || 0,
+      payment: parseInt(document.getElementById('visitPayment').value, 10) || 0,
       next_appointment_date: document.getElementById('visitNextDate').value.trim(),
       next_appointment_time: document.getElementById('visitNextTime').value.trim(),
       notes: document.getElementById('visitNotes').value.trim(),
     };
 
     try {
-      await api('/api/visits', { method: 'POST', body: JSON.stringify(body) });
-      flash('Visit recorded successfully! 🎉');
+      if (editId) {
+        await api(`/api/visits/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
+        flash('Seating updated! ✅');
+      } else {
+        const tid = treatmentId ? parseInt(treatmentId, 10) : 0;
+        if (!tid) { flash('Please open a treatment and use Add Seating.', 'error'); return; }
+        await api('/api/visits', { method: 'POST', body: JSON.stringify({ treatment_id: tid, ...body }) });
+        flash('Seating recorded successfully! 🎉');
+      }
       closeVisitModal();
-      loadProfile(patientId);
+      document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Seating';
+      if (currentPatientId) loadProfile(currentPatientId, { keepTreatmentView: currentTreatmentViewId });
     } catch (_) { }
   });
 
@@ -440,6 +601,51 @@ function setupForms() {
     document.getElementById('paymentTo').value = '';
     loadPayments();
   });
+
+  // Add Treatment form
+  document.getElementById('addTreatmentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('treatmentName').value.trim();
+    if (!name) { flash('Treatment name is required', 'error'); return; }
+    const patientId = currentPatientId != null ? parseInt(currentPatientId, 10) : null;
+    if (!patientId || isNaN(patientId)) { flash('No patient selected. Open a patient profile first.', 'error'); return; }
+    try {
+      await api('/api/treatments', {
+        method: 'POST',
+        body: JSON.stringify({
+          patient_id: patientId,
+          name,
+          description: document.getElementById('treatmentDescription').value.trim() || null,
+          created_date: document.getElementById('treatmentCreatedDate').value.trim() || getTodayFormatted(),
+        }),
+      });
+      flash('Treatment created! 🎉');
+      document.getElementById('addTreatmentModal').classList.remove('show');
+      e.target.reset();
+      document.getElementById('treatmentCreatedDate').value = getTodayFormatted();
+      loadProfile(patientId);
+    } catch (_) { }
+  });
+
+  // Edit Treatment form
+  document.getElementById('editTreatmentForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('editTreatmentId').value;
+    const name = document.getElementById('editTreatmentName').value.trim();
+    if (!name) { flash('Treatment name is required', 'error'); return; }
+    try {
+      await api(`/api/treatments/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name,
+          description: document.getElementById('editTreatmentDescription').value.trim() || null,
+        }),
+      });
+      flash('Treatment updated! ✅');
+      document.getElementById('editTreatmentModal').classList.remove('show');
+      if (currentPatientId) loadProfile(currentPatientId, { keepTreatmentView: currentTreatmentViewId });
+    } catch (_) { }
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -447,15 +653,19 @@ function setupForms() {
 // ══════════════════════════════════════════════════════════════
 
 function setupModals() {
-  const addVisitBtn = document.getElementById('addVisitBtn');
-  addVisitBtn.addEventListener('click', () => {
-    document.getElementById('visitForm').reset();
-    document.getElementById('visitDate').value = getTodayFormatted();
-    document.getElementById('visitPatientId').value = currentPatientId;
-    document.getElementById('visitModal').classList.add('show');
+  document.getElementById('addTreatmentBtn').addEventListener('click', () => {
+    document.getElementById('addTreatmentForm').reset();
+    document.getElementById('treatmentCreatedDate').value = getTodayFormatted();
+    document.getElementById('addTreatmentModal').classList.add('show');
   });
 
   document.getElementById('closeModal').addEventListener('click', closeVisitModal);
+  document.getElementById('closeAddTreatmentModal').addEventListener('click', () => {
+    document.getElementById('addTreatmentModal').classList.remove('show');
+  });
+  document.getElementById('closeEditTreatmentModal').addEventListener('click', () => {
+    document.getElementById('editTreatmentModal').classList.remove('show');
+  });
   document.getElementById('closeEditModal').addEventListener('click', () => {
     document.getElementById('editPatientModal').classList.remove('show');
   });
@@ -466,6 +676,12 @@ function setupModals() {
   // Close modal on overlay click
   document.getElementById('visitModal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeVisitModal();
+  });
+  document.getElementById('addTreatmentModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
+  });
+  document.getElementById('editTreatmentModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
   });
   document.getElementById('editPatientModal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) e.currentTarget.classList.remove('show');
@@ -478,6 +694,8 @@ function setupModals() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeVisitModal();
+      document.getElementById('addTreatmentModal').classList.remove('show');
+      document.getElementById('editTreatmentModal').classList.remove('show');
       document.getElementById('editPatientModal').classList.remove('show');
       document.getElementById('oldRecordModal').classList.remove('show');
       document.getElementById('lightbox').classList.remove('show');
@@ -489,10 +707,44 @@ function setupModals() {
     tab.addEventListener('click', () => {
       document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
+      const tabName = tab.dataset.tab;
       document.querySelectorAll('.profile-tab-content').forEach(c => c.classList.remove('active'));
-      const target = tab.dataset.tab === 'visits' ? 'profileTabVisits' : 'profileTabOldRecords';
+      const target = tabName === 'treatments' ? 'profileTabTreatments' : 'profileTabOldRecords';
       document.getElementById(target).classList.add('active');
     });
+  });
+
+  // Event delegation for treatments container (View, Edit, Delete, Add Seating, back)
+  document.getElementById('treatmentsContainer').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.preventDefault();
+    const action = btn.getAttribute('data-action');
+    const treatmentId = btn.getAttribute('data-treatment-id');
+    const patientId = btn.getAttribute('data-patient-id');
+    const visitId = btn.getAttribute('data-visit-id');
+    const treatmentName = btn.getAttribute('data-treatment-name') || '';
+
+    if (action === 'view-treatment' && treatmentId) {
+      currentTreatmentViewId = parseInt(treatmentId, 10);
+      renderTreatmentsContent(currentPatientId);
+    } else if (action === 'back-to-treatments') {
+      currentTreatmentViewId = null;
+      renderTreatmentsContent(currentPatientId);
+    } else if (action === 'add-seating' && treatmentId) {
+      openAddSeatingModal(treatmentId, treatmentName);
+    } else if (action === 'edit-treatment' && treatmentId) {
+      const t = currentProfileTreatments.find(tr => tr.id === parseInt(treatmentId, 10));
+      if (t) openEditTreatmentModal(t.id, t.name || '', t.description || '');
+    } else if (action === 'delete-treatment' && treatmentId && patientId) {
+      deleteTreatment(parseInt(treatmentId, 10), parseInt(patientId, 10), treatmentName);
+    } else if (action === 'edit-seating' && visitId) {
+      openEditSeatingModal(visitId);
+    } else if (action === 'delete-seating' && visitId) {
+      deleteSeating(visitId, currentPatientId);
+    } else if (action === 'download-treatment-pdf' && treatmentId) {
+      window.open('/api/treatments/' + treatmentId + '/pdf', '_blank');
+    }
   });
 }
 

@@ -244,41 +244,27 @@
           <div class="profile-right">
             <!-- Profile Tabs -->
             <div class="profile-tabs">
-              <button class="profile-tab active" data-tab="visits">
-                🗂️ Visit History
+              <button class="profile-tab active" data-tab="treatments">
+                🦷 Treatments
               </button>
               <button class="profile-tab" data-tab="oldrecords">
                 📁 Old Records
               </button>
             </div>
 
-            <!-- Visits Tab -->
+            <!-- Treatments Tab -->
             <div
               class="card visit-card profile-tab-content active"
-              id="profileTabVisits"
+              id="profileTabTreatments"
             >
               <div class="visit-header">
-                <h3>🗂️ Visit History</h3>
-                <button class="btn btn-primary" id="addVisitBtn">
-                  ➕ Add Visit
+                <h3>🦷 Treatments</h3>
+                <button class="btn btn-primary" id="addTreatmentBtn">
+                  ➕ Add Treatment
                 </button>
               </div>
-              <div class="table-wrap">
-                <table class="data-table" id="visitTable">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Time</th>
-                      <th>Work Done</th>
-                      <th>Findings</th>
-                      <th>Payment (₹)</th>
-                      <th>Next Appt</th>
-                      <th>Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody id="visitTableBody"></tbody>
-                </table>
-              </div>
+              <!-- Treatment list or treatment detail (seatings) - filled by JS -->
+              <div id="treatmentsContainer" class="treatments-container"></div>
             </div>
 
             <!-- Old Records Tab -->
@@ -371,15 +357,16 @@
       </section>
     </main>
 
-    <!-- ── Visit Modal ────────────────────────────────────── -->
+    <!-- ── Visit / Seating Modal ────────────────────────────────────── -->
     <div class="modal-overlay" id="visitModal">
       <div class="modal">
         <div class="modal-header">
-          <h3>➕ Add New Visit</h3>
+          <h3 id="visitModalTitle">➕ Add Seating</h3>
           <button class="modal-close" id="closeModal">&times;</button>
         </div>
         <form id="visitForm">
-          <input type="hidden" id="visitPatientId" />
+          <input type="hidden" id="visitTreatmentId" />
+          <input type="hidden" id="visitEditId" />
           <div class="form-grid">
             <div class="form-group">
               <label for="visitDate">Visit Date</label>
@@ -430,9 +417,60 @@
               ></textarea>
             </div>
           </div>
-          <button type="submit" class="btn btn-primary btn-lg">
-            💾 Save Visit
+          <button type="submit" class="btn btn-primary btn-lg" id="visitFormSubmitBtn">
+            💾 Save Seating
           </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Add Treatment Modal ─────────────────────────────── -->
+    <div class="modal-overlay" id="addTreatmentModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>➕ Add Treatment</h3>
+          <button class="modal-close" id="closeAddTreatmentModal">&times;</button>
+        </div>
+        <form id="addTreatmentForm">
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="treatmentName">Treatment Name <span class="req">*</span></label>
+              <input type="text" id="treatmentName" required placeholder="e.g. Root canal #18" />
+            </div>
+            <div class="form-group full-width">
+              <label for="treatmentDescription">Description</label>
+              <textarea id="treatmentDescription" rows="2" placeholder="Optional notes..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="treatmentCreatedDate">Start Date</label>
+              <input type="text" id="treatmentCreatedDate" placeholder="e.g. 9/3/26" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg">💾 Create Treatment</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── Edit Treatment Modal ─────────────────────────────── -->
+    <div class="modal-overlay" id="editTreatmentModal">
+      <div class="modal">
+        <div class="modal-header">
+          <h3>✏️ Edit Treatment</h3>
+          <button class="modal-close" id="closeEditTreatmentModal">&times;</button>
+        </div>
+        <form id="editTreatmentForm">
+          <input type="hidden" id="editTreatmentId" />
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label for="editTreatmentName">Treatment Name <span class="req">*</span></label>
+              <input type="text" id="editTreatmentName" required />
+            </div>
+            <div class="form-group full-width">
+              <label for="editTreatmentDescription">Description</label>
+              <textarea id="editTreatmentDescription" rows="2"></textarea>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg">💾 Update Treatment</button>
         </form>
       </div>
     </div>

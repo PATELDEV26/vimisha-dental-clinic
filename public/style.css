@@ -790,6 +790,15 @@ a:hover {
   align-items: start;
 }
 
+/* When viewing a treatment's seatings, hide patient card so table gets full width */
+.profile-grid.profile-viewing-seatings {
+  grid-template-columns: 1fr;
+}
+
+.profile-grid.profile-viewing-seatings .profile-card {
+  display: none;
+}
+
 .profile-card {
   position: sticky;
   top: 150px;
@@ -824,6 +833,11 @@ a:hover {
 }
 
 .visit-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 20px 24px;
   background: var(--card-bg);
   border-bottom: 1px solid var(--border);
@@ -831,6 +845,289 @@ a:hover {
 
 .visit-header h3 {
   font-size: 1.2rem;
+  margin: 0;
+}
+
+/* Treatments container and cards */
+.treatments-container {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.treatments-empty {
+  padding: 32px 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.treatments-empty .empty-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.treatments-empty-hint {
+  font-size: 0.9rem;
+  margin: 0 0 16px 0;
+  color: var(--text-muted);
+}
+
+.treatments-empty #emptyStateAddTreatmentBtn {
+  margin-top: 8px;
+}
+
+.treatment-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card-bg);
+}
+
+.treatment-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.treatment-name {
+  margin: 0 0 4px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.treatment-description {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.treatment-date {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.treatment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.treatment-card .table-wrap {
+  margin: 0;
+  border: none;
+}
+
+.treatment-card .seating-table {
+  margin: 0;
+}
+
+.treatment-card .data-table td,
+.treatment-card .data-table th {
+  padding: 10px 12px;
+}
+
+/* Treatment detail view (seatings for one treatment) */
+.treatment-detail-view {
+  padding: 20px 24px;
+}
+
+.treatment-detail-view .back-btn {
+  margin-bottom: 16px;
+}
+
+.treatment-detail-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.treatment-detail-header .treatment-name {
+  margin: 0 0 4px 0;
+  font-size: 1.15rem;
+}
+
+.treatment-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+/* Treatments list & seatings page – responsive */
+@media (max-width: 768px) {
+  .treatments-container {
+    padding: 16px 12px;
+  }
+
+  .treatment-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .treatment-card .treatment-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .treatment-card .treatment-actions .btn {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .treatment-detail-view {
+    padding: 16px 12px;
+  }
+
+  .treatment-detail-view .back-btn {
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    padding: 8px 12px;
+  }
+
+  .treatment-detail-header {
+    padding-bottom: 12px;
+    margin-bottom: 16px;
+  }
+
+  .treatment-detail-header .treatment-name {
+    font-size: 1.05rem;
+  }
+
+  .treatment-detail-header .treatment-description {
+    font-size: 0.9rem;
+  }
+
+  .treatment-detail-header .treatment-date {
+    font-size: 0.8rem;
+  }
+
+  .treatment-detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .treatment-detail-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Seatings table: card layout with column labels */
+  .treatment-detail-view .table-wrap {
+    margin: 0 -12px;
+    overflow-x: visible;
+  }
+
+  .treatment-detail-view .seating-table {
+    font-size: 0.85rem;
+  }
+
+  .treatment-detail-view .seating-table thead {
+    display: none;
+  }
+
+  .treatment-detail-view .seating-table tbody,
+  .treatment-detail-view .seating-table tr,
+  .treatment-detail-view .seating-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .treatment-detail-view .seating-table tr {
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+    padding: 0;
+    background: var(--card-bg);
+    overflow: hidden;
+  }
+
+  .treatment-detail-view .seating-table td {
+    padding: 10px 14px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+
+  .treatment-detail-view .seating-table tr td:last-child {
+    border-bottom: none;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    background: #F8FAFB;
+  }
+
+  .treatment-detail-view .seating-table td::before {
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .treatment-detail-view .seating-table td:nth-child(1)::before { content: "Date"; }
+  .treatment-detail-view .seating-table td:nth-child(2)::before { content: "Time"; }
+  .treatment-detail-view .seating-table td:nth-child(3)::before { content: "Work done"; }
+  .treatment-detail-view .seating-table td:nth-child(4)::before { content: "Findings"; }
+  .treatment-detail-view .seating-table td:nth-child(5)::before { content: "Payment (₹)"; }
+  .treatment-detail-view .seating-table td:nth-child(6)::before { content: "Next appt"; }
+  .treatment-detail-view .seating-table td:nth-child(7)::before { content: "Notes"; }
+  .treatment-detail-view .seating-table td:nth-child(8)::before { content: "Actions"; }
+
+  .treatment-detail-view .seating-table td.empty-state::before {
+    content: none;
+    display: none;
+  }
+
+  .treatment-detail-view .seating-table .td-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .treatment-detail-view .seating-table .td-actions .btn {
+    flex: 1;
+    min-width: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .treatment-detail-view {
+    padding: 12px 10px;
+  }
+
+  .treatment-detail-view .table-wrap {
+    margin: 0 -10px;
+  }
+
+  .treatment-detail-view .seating-table td {
+    padding: 8px 12px;
+    font-size: 0.8rem;
+  }
+
+  .treatment-detail-view .seating-table .td-actions {
+    flex-direction: column;
+  }
+
+  .treatment-detail-view .seating-table .td-actions .btn {
+    min-width: 100%;
+    width: 100%;
+  }
 }
 
 /* Profile Tabs */

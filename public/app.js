@@ -1025,6 +1025,7 @@ function setupOldRecords() {
 
 function selectOldRecordPatient(id, name, caseNo) {
   document.getElementById('orPatientId').value = id;
+  document.getElementById('orCaseNo').value = caseNo || '';
   document.getElementById('orPatientSearch').style.display = 'none';
   document.getElementById('orPatientSearchResults').classList.remove('show');
   const el = document.getElementById('orSelectedPatient');
@@ -1037,6 +1038,7 @@ function selectOldRecordPatient(id, name, caseNo) {
 
 function clearOldRecordPatient() {
   document.getElementById('orPatientId').value = '';
+  document.getElementById('orCaseNo').value = '';
   document.getElementById('orSelectedPatient').style.display = 'none';
   document.getElementById('orPatientSearch').style.display = '';
   document.getElementById('orPatientSearch').value = '';
@@ -1133,14 +1135,21 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     doc.setFillColor(53, 88, 114); // #355872
     doc.rect(0, 0, pageWidth, 40, 'F');
     
+    // Logo
+    try {
+      doc.addImage('logo.png', 'PNG', margin, 5, 30, 30);
+    } catch (e) {
+      console.error('Logo add failed in jsPDF:', e);
+    }
+
     // Header Text
     doc.setTextColor(247, 248, 240); // #F7F8F0
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
-    doc.text("Vimisha's Dental Clinic", margin, 20);
+    doc.text("Vimisha's Dental Clinic", margin + 35, 20);
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.text("Patient Medical Record", margin, 30);
+    doc.text("Patient Medical Record", margin + 35, 30);
 
     // Reset Text Color
     doc.setTextColor(53, 88, 114); // #355872

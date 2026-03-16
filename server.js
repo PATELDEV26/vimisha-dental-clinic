@@ -252,8 +252,18 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
         // Header bar (primary teal) + accent line (orange), matching site header
         doc.fillColor(theme.primary).rect(0, 0, doc.page.width, 52, 'F');
         doc.fillColor(theme.accent).rect(0, 52, doc.page.width, 3, 'F');
-        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("Vimisha's Dental Clinic", margin, 16);
-        doc.font('Helvetica').fontSize(11).text('Treatment Report', margin, 34);
+        // Logo
+        try {
+            const logoPath = path.join(__dirname, 'logo.png');
+            if (fs.existsSync(logoPath)) {
+                doc.image(logoPath, margin, 8, { height: 36 });
+            }
+        } catch (e) {
+            console.error('Logo add failed:', e);
+        }
+
+        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("Vimisha's Dental Clinic", margin + 50, 16);
+        doc.font('Helvetica').fontSize(11).text('Treatment Report', margin + 50, 34);
         y = 70;
 
         // Patient details
@@ -344,9 +354,10 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
 
         // Footer (text-muted, matching site)
         const footerY = doc.page.height - 36;
+        doc.page.margins.bottom = 0; // Prevent automatic page break from footer
         doc.fillColor(theme.textMuted).font('Helvetica').fontSize(9);
-        doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin, footerY);
-        doc.text("Vimisha's Dental Clinic — Confidential Treatment Record", margin, footerY + 12, { width: pageWidth, align: 'center' });
+        doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin, footerY, { lineBreak: false });
+        doc.text("Vimisha's Dental Clinic — Confidential Treatment Record", margin, footerY + 12, { width: pageWidth, align: 'center', lineBreak: false });
 
         doc.end();
     } catch (err) {

@@ -72,17 +72,57 @@ app.get('/api/patients', (req, res) => {
     let rows;
     if (search) {
         const pattern = `%${search}%`;
-        // Normalize phone for matching: strip spaces/dashes so "902" matches "902-318-5235" or "902 318 5235"
+        const prefix = `${search}%`;
+        // Union actual patients and unlinked old records
         rows = db.prepare(`
-      SELECT * FROM patients
-      WHERE name LIKE @q
-         OR case_no LIKE @q
-         OR phone LIKE @q
-         OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
-      ORDER BY id DESC
-    `).all({ q: pattern });
+          SELECT * FROM (
+            SELECT 
+              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
+              NULL as file_path, NULL as description, 'patient' as type
+            FROM patients
+            WHERE name LIKE @q
+               OR case_no LIKE @q
+               OR phone LIKE @q
+               OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
+
+            UNION ALL
+
+            SELECT
+              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
+              file_path, description, 'old_record' as type
+            FROM old_records
+            WHERE patient_id IS NULL AND (patient_name_manual LIKE @q OR case_no LIKE @q OR description LIKE @q)
+          )
+          ORDER BY
+            CASE
+              WHEN type = 'patient' AND case_no = @exact THEN 1
+              WHEN type = 'patient' AND case_no LIKE @prefix THEN 2
+              WHEN type = 'old_record' AND case_no LIKE @prefix THEN 3
+              WHEN name LIKE @prefix THEN 4
+              ELSE 5
+            END,
+            id DESC
+          LIMIT 100
+        `).all({ q: pattern, prefix: prefix, exact: search });
     } else {
-        rows = db.prepare('SELECT * FROM patients ORDER BY id DESC').all();
+        rows = db.prepare(`
+          SELECT * FROM (
+            SELECT 
+              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
+              NULL as file_path, NULL as description, 'patient' as type
+            FROM patients
+
+            UNION ALL
+
+            SELECT
+              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
+              file_path, description, 'old_record' as type
+            FROM old_records
+            WHERE patient_id IS NULL
+          )
+          ORDER BY id DESC
+          LIMIT 100
+        `).all();
     }
     res.json(rows);
 });
@@ -194,9 +234,22 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
             return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..';
         }
         if (doc.widthOfString(s) <= maxWidth) return s;
-        let t = s;
-        while (t.length > 0 && doc.widthOfString(t + '..') > maxWidth) t = t.slice(0, -1);
-        return t.length < s.length ? t + '..' : t;
+
+        let low = 0;
+        let high = s.length;
+        let ans = 0;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            const tryStr = s.slice(0, mid) + '..';
+            if (doc.widthOfString(tryStr) <= maxWidth) {
+                ans = mid;
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+        return ans > 0 ? s.slice(0, ans) + '..' : '..';
     };
     const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_report.pdf`;
 
@@ -567,13 +620,23 @@ app.get('/api/old-records', (req, res) => {
     const search = req.query.search || '';
     let rows;
     if (search) {
+        const pattern = `%${search}%`;
+        const prefix = `${search}%`;
         rows = db.prepare(`
       SELECT r.*, p.name AS linked_patient_name, p.case_no
       FROM old_records r
       LEFT JOIN patients p ON p.id = r.patient_id
       WHERE p.name LIKE @q OR r.patient_name_manual LIKE @q OR r.description LIKE @q
-      ORDER BY r.id DESC
-    `).all({ q: `%${search}%` });
+      ORDER BY
+        CASE
+          WHEN p.name LIKE @prefix THEN 1
+          WHEN r.patient_name_manual LIKE @prefix THEN 2
+          WHEN p.name LIKE @q THEN 3
+          WHEN r.patient_name_manual LIKE @q THEN 4
+          ELSE 5
+        END,
+        r.id DESC
+    `).all({ q: pattern, prefix: prefix });
     } else {
         rows = db.prepare(`
       SELECT r.*, p.name AS linked_patient_name, p.case_no

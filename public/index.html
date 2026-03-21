@@ -110,8 +110,8 @@
         <form class="form-card" id="registerForm">
           <div class="form-grid">
             <div class="form-group">
-              <label for="regCaseNo">Case No</label>
-              <input type="text" id="regCaseNo" placeholder="e.g. K 8 134" />
+              <label for="regCaseNo">Case No <span class="req">*</span></label>
+              <input type="text" id="regCaseNo" placeholder="e.g. K 8 134" required />
             </div>
             <div class="form-group">
               <label for="regName">Full Name <span class="req">*</span></label>
@@ -153,7 +153,7 @@
             </div>
             <div class="form-group">
               <label for="regPhone">Phone</label>
-              <input type="text" id="regPhone" placeholder="Phone number" />
+              <input type="text" id="regPhone" placeholder="Phone number" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
             </div>
             <div class="form-group">
               <label for="regReferredBy">Referred By</label>
@@ -169,6 +169,7 @@
                 type="text"
                 id="regReferrerPhone"
                 placeholder="Referrer phone"
+                oninput="this.value = this.value.replace(/[^0-9]/g, '')"
               />
             </div>
             <div class="form-group">
@@ -177,6 +178,7 @@
                 type="text"
                 id="regDate"
                 placeholder="Auto-filled to today"
+                readonly
               />
             </div>
           </div>
@@ -466,8 +468,8 @@
           <input type="hidden" id="editPatientId" />
           <div class="form-grid">
             <div class="form-group">
-              <label for="editCaseNo">Case No</label>
-              <input type="text" id="editCaseNo" />
+              <label for="editCaseNo">Case No (Read-Only)</label>
+              <input type="text" id="editCaseNo" readonly style="background-color: #f0f4f8; cursor: not-allowed;" />
             </div>
             <div class="form-group">
               <label for="editName">Full Name <span class="req">*</span></label>
@@ -498,7 +500,7 @@
             </div>
             <div class="form-group">
               <label for="editPhone">Phone</label>
-              <input type="text" id="editPhone" />
+              <input type="text" id="editPhone" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
             </div>
             <div class="form-group">
               <label for="editReferredBy">Referred By</label>
@@ -506,7 +508,7 @@
             </div>
             <div class="form-group">
               <label for="editReferrerPhone">Referrer Phone</label>
-              <input type="text" id="editReferrerPhone" />
+              <input type="text" id="editReferrerPhone" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-lg">

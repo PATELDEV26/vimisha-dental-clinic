@@ -331,7 +331,21 @@ a:hover {
 }
 
 .search-result-item:hover {
-  background: var(--primary-bg);
+  background: var(--primary-light);
+}
+
+.search-result-item.selected {
+  background: var(--primary-light);
+  border-left: 4px solid var(--primary);
+  padding-left: 16px; /* Adjust for border */
+}
+
+.search-result-item mark {
+  background: #FFE600;
+  color: #000;
+  font-weight: 700;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .search-result-name {

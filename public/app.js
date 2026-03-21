@@ -48,6 +48,55 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function highlightMatch(text, query) {
+  if (!query || !text) return escapeHtml(text);
+  const escapedText = escapeHtml(text);
+  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${escapedQuery})`, 'gi');
+  return escapedText.replace(regex, '<mark>$1</mark>');
+}
+
+function setupKeyboardNav(inputEl, resultsEl) {
+  let selectedResultIndex = -1;
+
+  inputEl.addEventListener('keydown', (e) => {
+    const items = resultsEl.querySelectorAll('.search-result-item');
+    if (items.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedResultIndex = (selectedResultIndex + 1) % items.length;
+      updateHighlight();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedResultIndex = (selectedResultIndex - 1 + items.length) % items.length;
+      updateHighlight();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedResultIndex >= 0 && selectedResultIndex < items.length) {
+        items[selectedResultIndex].click();
+      }
+    } else if (e.key === 'Escape') {
+      resultsEl.classList.remove('show');
+      selectedResultIndex = -1;
+    }
+
+    function updateHighlight() {
+      items.forEach((item, i) => {
+        if (i === selectedResultIndex) {
+          item.classList.add('selected');
+          item.scrollIntoView({ block: 'nearest' });
+        } else {
+          item.classList.remove('selected');
+        }
+      });
+    }
+  });
+
+  inputEl.addEventListener('input', () => { selectedResultIndex = -1; });
+}
+
+
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Live date
@@ -142,13 +191,6 @@ async function loadDashboard() {
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-icon revenue">💰</div>
-        <div>
-          <div class="stat-value">₹${stats.totalRevenue.toLocaleString('en-IN')}</div>
-          <div class="stat-label">Total Revenue</div>
-        </div>
-      </div>
-      <div class="stat-card">
         <div class="stat-icon records">📁</div>
         <div>
           <div class="stat-value">${stats.totalOldRecords || 0}</div>
@@ -207,8 +249,8 @@ function setupSearches() {
         } else {
           dashResults.innerHTML = patients.slice(0, 8).map(p => `
             <div class="search-result-item" onclick="openProfile(${p.id}); document.getElementById('dashSearchResults').classList.remove('show'); document.getElementById('dashSearch').value = '';">
-              <div class="search-result-name">${escapeHtml(p.name)}</div>
-              <div class="search-result-case">Case: ${escapeHtml(p.case_no)} · Phone: ${escapeHtml(p.phone)}</div>
+              <div class="search-result-name">${highlightMatch(p.name, q)}</div>
+              <div class="search-result-case">Case: ${highlightMatch(p.case_no, q)} · Phone: ${highlightMatch(p.phone, q)}</div>
             </div>
           `).join('');
         }
@@ -216,6 +258,9 @@ function setupSearches() {
       } catch (_) { }
     }, 300);
   });
+
+  // Keyboard navigation
+  setupKeyboardNav(dashInput, dashResults);
 
   // Close search on outside click
   document.addEventListener('click', (e) => {
@@ -248,19 +293,29 @@ async function loadPatients(search = '') {
       return;
     }
 
-    tbody.innerHTML = patients.map(p => `
-      <tr class="clickable" onclick="openProfile(${p.id})">
-        <td class="td-case">${escapeHtml(p.case_no)}</td>
-        <td class="td-name">${escapeHtml(p.name)}</td>
-        <td>${p.age || '—'}</td>
-        <td class="td-mono">${escapeHtml(p.phone)}</td>
-        <td class="td-date">${escapeHtml(p.created_date)}</td>
-        <td class="td-actions">
-          <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProfile(${p.id})">👁️ View</button>
-          <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deletePatient(${p.id}, '${escapeHtml(p.name)}')">🗑️ Delete</button>
-        </td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = patients.map(p => {
+      const isOldRecord = p.type === 'old_record';
+      const clickAction = isOldRecord 
+        ? `openLightbox('${escapeHtml(p.file_path)}', '${escapeHtml(p.description || '')}', '', '${escapeHtml(p.created_date)}')` 
+        : `openProfile(${p.id})`;
+
+      return `
+        <tr class="clickable" onclick="${clickAction}">
+          <td class="td-case">${escapeHtml(p.case_no || '—')}${isOldRecord ? ' <span style="font-size: 0.75rem; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 4px;">Old Record</span>' : ''}</td>
+          <td class="td-name">${escapeHtml(p.name)}</td>
+          <td>${p.age || '—'}</td>
+          <td class="td-mono">${escapeHtml(p.phone) || '—'}</td>
+          <td class="td-date">${escapeHtml(p.created_date)}</td>
+          <td class="td-actions">
+            ${isOldRecord 
+              ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); ${clickAction}">👁️ View File</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProfile(${p.id})">👁️ View</button>`
+            }
+            ${!isOldRecord ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deletePatient(${p.id}, '${escapeHtml(p.name)}')">🗑️ Delete</button>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
   } catch (_) { }
 }
 
@@ -909,8 +964,8 @@ function setupOldRecords() {
         } else {
           orResults.innerHTML = patients.slice(0, 6).map(p => `
                         <div class="search-result-item" onclick="selectOldRecordPatient(${p.id}, '${escapeHtml(p.name)}', '${escapeHtml(p.case_no)}')">
-                            <div class="search-result-name">${escapeHtml(p.name)}</div>
-                            <div class="search-result-case">Case: ${escapeHtml(p.case_no)}</div>
+                            <div class="search-result-name">${highlightMatch(p.name, q)}</div>
+                            <div class="search-result-case">Case: ${highlightMatch(p.case_no, q)}</div>
                         </div>
                     `).join('');
         }
@@ -918,6 +973,9 @@ function setupOldRecords() {
       } catch (_) { }
     }, 300);
   });
+
+  // Keyboard navigation for upload modal
+  setupKeyboardNav(orSearch, orResults);
 
   document.addEventListener('click', (e) => {
     if (!orSearch.contains(e.target) && !orResults.contains(e.target)) {

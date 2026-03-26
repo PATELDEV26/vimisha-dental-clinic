@@ -1,0 +1,468 @@
+﻿diff --git a/START CLINIC.bat b/START CLINIC.bat
+index 6420b38..75d01e2 100644
+--- a/START CLINIC.bat	
++++ b/START CLINIC.bat	
+@@ -11,38 +11,26 @@ cd /d "%~dp0"
+ start /b /min cmd /c "npm start > server-log.txt 2>&1"
+ 
+ :: Wait for server to start
+-timeout /t 6 /nobreak > nul
++timeout /t 10 /nobreak > nul
+ 
+-:: Start ngrok silently in background  
+-start /b /min cmd /c ".\ngrok http 3000 > ngrok-log.txt 2>&1"
+-
+-:: Wait for ngrok to start
+-timeout /t 5 /nobreak > nul
+-
+-:: Get ngrok public URL and show it
++:: Show connection info
+ echo.
+ echo  ==========================================
+-echo   Clinic is now ONLINE!
++echo   Clinic is now RUNNING!
+ echo.
+-echo   Inside Clinic (WiFi):
+-echo   http://192.168.1.5:3000
++echo   Access on this computer:
++echo   http://localhost:3000
+ echo.
+-echo   Fetching internet link... please wait...
++echo   Access from other devices (WiFi):
++echo   http://192.168.1.5:3000
+ echo  ==========================================
+ 
+ :: Open browser automatically for staff
+-start http://192.168.1.5:3000
+-
+-timeout /t 3 /nobreak > nul
+-
+-:: Show ngrok URL from their web interface
+-start http://127.0.0.1:4040
++start http://localhost:3000
+ 
+-echo.
+-echo  Check the browser tab that just opened
+-echo  to see your internet link!
+ echo.
+ echo  KEEP THIS WINDOW OPEN (you can minimize it)
+ echo  Closing this = clinic goes offline!
+ echo.
+ pause
++
+diff --git a/clinic.db-shm b/clinic.db-shm
+index bdb299e..53447d3 100644
+Binary files a/clinic.db-shm and b/clinic.db-shm differ
+diff --git a/clinic.db-wal b/clinic.db-wal
+index 98e092c..160e4aa 100644
+Binary files a/clinic.db-wal and b/clinic.db-wal differ
+diff --git a/ngrok-log.txt b/ngrok-log.txt
+index e69de29..bdc2047 100644
+--- a/ngrok-log.txt
++++ b/ngrok-log.txt
+@@ -0,0 +1,11 @@
++t=2026-03-16T22:38:05+0530 lvl=info msg="no configuration paths supplied"
++t=2026-03-16T22:38:05+0530 lvl=info msg="using configuration at default config path" path=C:\\Users\\patel\\AppData\\Local\\ngrok\\ngrok.yml
++t=2026-03-16T22:38:05+0530 lvl=info msg="open config file" path=C:\\Users\\patel\\AppData\\Local\\ngrok\\ngrok.yml err=nil
++t=2026-03-16T22:38:05+0530 lvl=info msg="FIPS 140 mode" enabled=false
++t=2026-03-16T22:38:05+0530 lvl=info msg="starting web service" obj=web addr=127.0.0.1:4040 allow_hosts=[]
++t=2026-03-16T22:38:05+0530 lvl=info msg="client session established" obj=tunnels.session
++t=2026-03-16T22:38:05+0530 lvl=info msg="tunnel session started" obj=tunnels.session
++t=2026-03-16T22:38:06+0530 lvl=info msg="started tunnel" obj=tunnels name=command_line addr=http://localhost:3000 url=https://remunerative-my-fibroplastic.ngrok-free.dev
++t=2026-03-16T23:14:35+0530 lvl=info msg="received stop request" obj=app stopReq="{err:<nil> restart:false}"
++t=2026-03-16T23:14:35+0530 lvl=info msg="session closing" obj=tunnels.session err=nil
++t=2026-03-16T23:14:35+0530 lvl=info msg="accept failed" obj=tunnels.session obj=csess id=f1e20d2ef255 err="reconnecting session closed"
+diff --git a/public/app.js b/public/app.js
+index bea9675..54a4c27 100644
+--- a/public/app.js
++++ b/public/app.js
+@@ -48,6 +48,55 @@ function escapeHtml(str) {
+   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+ }
+ 
++function highlightMatch(text, query) {
++  if (!query || !text) return escapeHtml(text);
++  const escapedText = escapeHtml(text);
++  const escapedQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++  const regex = new RegExp(`(${escapedQuery})`, 'gi');
++  return escapedText.replace(regex, '<mark>$1</mark>');
++}
++
++function setupKeyboardNav(inputEl, resultsEl) {
++  let selectedResultIndex = -1;
++
++  inputEl.addEventListener('keydown', (e) => {
++    const items = resultsEl.querySelectorAll('.search-result-item');
++    if (items.length === 0) return;
++
++    if (e.key === 'ArrowDown') {
++      e.preventDefault();
++      selectedResultIndex = (selectedResultIndex + 1) % items.length;
++      updateHighlight();
++    } else if (e.key === 'ArrowUp') {
++      e.preventDefault();
++      selectedResultIndex = (selectedResultIndex - 1 + items.length) % items.length;
++      updateHighlight();
++    } else if (e.key === 'Enter') {
++      e.preventDefault();
++      if (selectedResultIndex >= 0 && selectedResultIndex < items.length) {
++        items[selectedResultIndex].click();
++      }
++    } else if (e.key === 'Escape') {
++      resultsEl.classList.remove('show');
++      selectedResultIndex = -1;
++    }
++
++    function updateHighlight() {
++      items.forEach((item, i) => {
++        if (i === selectedResultIndex) {
++          item.classList.add('selected');
++          item.scrollIntoView({ block: 'nearest' });
++        } else {
++          item.classList.remove('selected');
++        }
++      });
++    }
++  });
++
++  inputEl.addEventListener('input', () => { selectedResultIndex = -1; });
++}
++
++
+ // ΓöÇΓöÇ Init ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+ document.addEventListener('DOMContentLoaded', () => {
+   // Live date
+@@ -141,13 +190,6 @@ async function loadDashboard() {
+           <div class="stat-label">Total Visits</div>
+         </div>
+       </div>
+-      <div class="stat-card">
+-        <div class="stat-icon revenue">≡ƒÆ░</div>
+-        <div>
+-          <div class="stat-value">Γé╣${stats.totalRevenue.toLocaleString('en-IN')}</div>
+-          <div class="stat-label">Total Revenue</div>
+-        </div>
+-      </div>
+       <div class="stat-card">
+         <div class="stat-icon records">≡ƒôü</div>
+         <div>
+@@ -207,8 +249,8 @@ function setupSearches() {
+         } else {
+           dashResults.innerHTML = patients.slice(0, 8).map(p => `
+             <div class="search-result-item" onclick="openProfile(${p.id}); document.getElementById('dashSearchResults').classList.remove('show'); document.getElementById('dashSearch').value = '';">
+-              <div class="search-result-name">${escapeHtml(p.name)}</div>
+-              <div class="search-result-case">Case: ${escapeHtml(p.case_no)} ┬╖ Phone: ${escapeHtml(p.phone)}</div>
++              <div class="search-result-name">${highlightMatch(p.name, q)}</div>
++              <div class="search-result-case">Case: ${highlightMatch(p.case_no, q)} ┬╖ Phone: ${highlightMatch(p.phone, q)}</div>
+             </div>
+           `).join('');
+         }
+@@ -217,6 +259,9 @@ function setupSearches() {
+     }, 300);
+   });
+ 
++  // Keyboard navigation
++  setupKeyboardNav(dashInput, dashResults);
++
+   // Close search on outside click
+   document.addEventListener('click', (e) => {
+     if (!dashInput.contains(e.target) && !dashResults.contains(e.target)) {
+@@ -248,19 +293,29 @@ async function loadPatients(search = '') {
+       return;
+     }
+ 
+-    tbody.innerHTML = patients.map(p => `
+-      <tr class="clickable" onclick="openProfile(${p.id})">
+-        <td class="td-case">${escapeHtml(p.case_no)}</td>
+-        <td class="td-name">${escapeHtml(p.name)}</td>
+-        <td>${p.age || 'ΓÇö'}</td>
+-        <td class="td-mono">${escapeHtml(p.phone)}</td>
+-        <td class="td-date">${escapeHtml(p.created_date)}</td>
+-        <td class="td-actions">
+-          <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProfile(${p.id})">≡ƒæü∩╕Å View</button>
+-          <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deletePatient(${p.id}, '${escapeHtml(p.name)}')">≡ƒùæ∩╕Å Delete</button>
+-        </td>
+-      </tr>
+-    `).join('');
++    tbody.innerHTML = patients.map(p => {
++      const isOldRecord = p.type === 'old_record';
++      const clickAction = isOldRecord 
++        ? `openLightbox('${escapeHtml(p.file_path)}', '${escapeHtml(p.description || '')}', '', '${escapeHtml(p.created_date)}')` 
++        : `openProfile(${p.id})`;
++
++      return `
++        <tr class="clickable" onclick="${clickAction}">
++          <td class="td-case">${escapeHtml(p.case_no || 'ΓÇö')}${isOldRecord ? ' <span style="font-size: 0.75rem; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-left: 4px;">Old Record</span>' : ''}</td>
++          <td class="td-name">${escapeHtml(p.name)}</td>
++          <td>${p.age || 'ΓÇö'}</td>
++          <td class="td-mono">${escapeHtml(p.phone) || 'ΓÇö'}</td>
++          <td class="td-date">${escapeHtml(p.created_date)}</td>
++          <td class="td-actions">
++            ${isOldRecord 
++              ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); ${clickAction}">≡ƒæü∩╕Å View File</button>`
++              : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProfile(${p.id})">≡ƒæü∩╕Å View</button>`
++            }
++            ${!isOldRecord ? `<button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deletePatient(${p.id}, '${escapeHtml(p.name)}')">≡ƒùæ∩╕Å Delete</button>` : ''}
++          </td>
++        </tr>
++      `;
++    }).join('');
+   } catch (_) { }
+ }
+ 
+@@ -909,8 +964,8 @@ function setupOldRecords() {
+         } else {
+           orResults.innerHTML = patients.slice(0, 6).map(p => `
+                         <div class="search-result-item" onclick="selectOldRecordPatient(${p.id}, '${escapeHtml(p.name)}', '${escapeHtml(p.case_no)}')">
+-                            <div class="search-result-name">${escapeHtml(p.name)}</div>
+-                            <div class="search-result-case">Case: ${escapeHtml(p.case_no)}</div>
++                            <div class="search-result-name">${highlightMatch(p.name, q)}</div>
++                            <div class="search-result-case">Case: ${highlightMatch(p.case_no, q)}</div>
+                         </div>
+                     `).join('');
+         }
+@@ -919,6 +974,9 @@ function setupOldRecords() {
+     }, 300);
+   });
+ 
++  // Keyboard navigation for upload modal
++  setupKeyboardNav(orSearch, orResults);
++
+   document.addEventListener('click', (e) => {
+     if (!orSearch.contains(e.target) && !orResults.contains(e.target)) {
+       orResults.classList.remove('show');
+diff --git a/public/index.html b/public/index.html
+index 1fe0ab3..53e5ece 100644
+--- a/public/index.html
++++ b/public/index.html
+@@ -110,8 +110,8 @@
+         <form class="form-card" id="registerForm">
+           <div class="form-grid">
+             <div class="form-group">
+-              <label for="regCaseNo">Case No</label>
+-              <input type="text" id="regCaseNo" placeholder="e.g. K 8 134" />
++              <label for="regCaseNo">Case No <span class="req">*</span></label>
++              <input type="text" id="regCaseNo" placeholder="e.g. K 8 134" required />
+             </div>
+             <div class="form-group">
+               <label for="regName">Full Name <span class="req">*</span></label>
+@@ -153,7 +153,7 @@
+             </div>
+             <div class="form-group">
+               <label for="regPhone">Phone</label>
+-              <input type="text" id="regPhone" placeholder="Phone number" />
++              <input type="text" id="regPhone" placeholder="Phone number" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
+             </div>
+             <div class="form-group">
+               <label for="regReferredBy">Referred By</label>
+@@ -169,6 +169,7 @@
+                 type="text"
+                 id="regReferrerPhone"
+                 placeholder="Referrer phone"
++                oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+               />
+             </div>
+             <div class="form-group">
+@@ -177,6 +178,7 @@
+                 type="text"
+                 id="regDate"
+                 placeholder="Auto-filled to today"
++                readonly
+               />
+             </div>
+           </div>
+@@ -466,8 +468,8 @@
+           <input type="hidden" id="editPatientId" />
+           <div class="form-grid">
+             <div class="form-group">
+-              <label for="editCaseNo">Case No</label>
+-              <input type="text" id="editCaseNo" />
++              <label for="editCaseNo">Case No (Read-Only)</label>
++              <input type="text" id="editCaseNo" readonly style="background-color: #f0f4f8; cursor: not-allowed;" />
+             </div>
+             <div class="form-group">
+               <label for="editName">Full Name <span class="req">*</span></label>
+@@ -498,7 +500,7 @@
+             </div>
+             <div class="form-group">
+               <label for="editPhone">Phone</label>
+-              <input type="text" id="editPhone" />
++              <input type="text" id="editPhone" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
+             </div>
+             <div class="form-group">
+               <label for="editReferredBy">Referred By</label>
+@@ -506,7 +508,7 @@
+             </div>
+             <div class="form-group">
+               <label for="editReferrerPhone">Referrer Phone</label>
+-              <input type="text" id="editReferrerPhone" />
++              <input type="text" id="editReferrerPhone" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
+             </div>
+           </div>
+           <button type="submit" class="btn btn-primary btn-lg">
+diff --git a/public/style.css b/public/style.css
+index e23d247..eeeefb7 100644
+--- a/public/style.css
++++ b/public/style.css
+@@ -331,7 +331,21 @@ a:hover {
+ }
+ 
+ .search-result-item:hover {
+-  background: var(--primary-bg);
++  background: var(--primary-light);
++}
++
++.search-result-item.selected {
++  background: var(--primary-light);
++  border-left: 4px solid var(--primary);
++  padding-left: 16px; /* Adjust for border */
++}
++
++.search-result-item mark {
++  background: #FFE600;
++  color: #000;
++  font-weight: 700;
++  padding: 0 2px;
++  border-radius: 2px;
+ }
+ 
+ .search-result-name {
+diff --git a/server-log.txt b/server-log.txt
+index e9717f9..003b2ba 100644
+--- a/server-log.txt
++++ b/server-log.txt
+@@ -6,8 +6,9 @@
+   ≡ƒª╖  Vimisha's Dental Clinic Dashboard
+   ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+   Local:   http://localhost:3000
+-  Network: http://192.168.1.5:3000
++  Network: http://192.168.1.2:3000
+ 
+   All devices on the same network can access the dashboard
+   using the Network URL above.
+ 
++^C^C
+\ No newline at end of file
+diff --git a/server.js b/server.js
+index 81a8b7b..04a5804 100644
+--- a/server.js
++++ b/server.js
+@@ -72,17 +72,57 @@ app.get('/api/patients', (req, res) => {
+     let rows;
+     if (search) {
+         const pattern = `%${search}%`;
+-        // Normalize phone for matching: strip spaces/dashes so "902" matches "902-318-5235" or "902 318 5235"
++        const prefix = `${search}%`;
++        // Union actual patients and unlinked old records
+         rows = db.prepare(`
+-      SELECT * FROM patients
+-      WHERE name LIKE @q
+-         OR case_no LIKE @q
+-         OR phone LIKE @q
+-         OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
+-      ORDER BY id DESC
+-    `).all({ q: pattern });
++          SELECT * FROM (
++            SELECT 
++              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
++              NULL as file_path, NULL as description, 'patient' as type
++            FROM patients
++            WHERE name LIKE @q
++               OR case_no LIKE @q
++               OR phone LIKE @q
++               OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
++
++            UNION ALL
++
++            SELECT
++              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
++              file_path, description, 'old_record' as type
++            FROM old_records
++            WHERE patient_id IS NULL AND (patient_name_manual LIKE @q OR case_no LIKE @q OR description LIKE @q)
++          )
++          ORDER BY
++            CASE
++              WHEN type = 'patient' AND case_no = @exact THEN 1
++              WHEN type = 'patient' AND case_no LIKE @prefix THEN 2
++              WHEN type = 'old_record' AND case_no LIKE @prefix THEN 3
++              WHEN name LIKE @prefix THEN 4
++              ELSE 5
++            END,
++            id DESC
++          LIMIT 100
++        `).all({ q: pattern, prefix: prefix, exact: search });
+     } else {
+-        rows = db.prepare('SELECT * FROM patients ORDER BY id DESC').all();
++        rows = db.prepare(`
++          SELECT * FROM (
++            SELECT 
++              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
++              NULL as file_path, NULL as description, 'patient' as type
++            FROM patients
++
++            UNION ALL
++
++            SELECT
++              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
++              file_path, description, 'old_record' as type
++            FROM old_records
++            WHERE patient_id IS NULL
++          )
++          ORDER BY id DESC
++          LIMIT 100
++        `).all();
+     }
+     res.json(rows);
+ });
+@@ -194,9 +234,22 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
+             return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..';
+         }
+         if (doc.widthOfString(s) <= maxWidth) return s;
+-        let t = s;
+-        while (t.length > 0 && doc.widthOfString(t + '..') > maxWidth) t = t.slice(0, -1);
+-        return t.length < s.length ? t + '..' : t;
++
++        let low = 0;
++        let high = s.length;
++        let ans = 0;
++
++        while (low <= high) {
++            const mid = Math.floor((low + high) / 2);
++            const tryStr = s.slice(0, mid) + '..';
++            if (doc.widthOfString(tryStr) <= maxWidth) {
++                ans = mid;
++                low = mid + 1;
++            } else {
++                high = mid - 1;
++            }
++        }
++        return ans > 0 ? s.slice(0, ans) + '..' : '..';
+     };
+     const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_report.pdf`;
+ 
+@@ -567,13 +620,23 @@ app.get('/api/old-records', (req, res) => {
+     const search = req.query.search || '';
+     let rows;
+     if (search) {
++        const pattern = `%${search}%`;
++        const prefix = `${search}%`;
+         rows = db.prepare(`
+       SELECT r.*, p.name AS linked_patient_name, p.case_no
+       FROM old_records r
+       LEFT JOIN patients p ON p.id = r.patient_id
+       WHERE p.name LIKE @q OR r.patient_name_manual LIKE @q OR r.description LIKE @q
+-      ORDER BY r.id DESC
+-    `).all({ q: `%${search}%` });
++      ORDER BY
++        CASE
++          WHEN p.name LIKE @prefix THEN 1
++          WHEN r.patient_name_manual LIKE @prefix THEN 2
++          WHEN p.name LIKE @q THEN 3
++          WHEN r.patient_name_manual LIKE @q THEN 4
++          ELSE 5
++        END,
++        r.id DESC
++    `).all({ q: pattern, prefix: prefix });
+     } else {
+         rows = db.prepare(`
+       SELECT r.*, p.name AS linked_patient_name, p.case_no

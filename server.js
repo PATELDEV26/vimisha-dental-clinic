@@ -133,12 +133,12 @@ app.get('/api/patients/:id', (req, res) => {
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
     const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const treatmentsWithSeatings = treatments.map(t => ({
+    const treatmentsWithSittings = treatments.map(t => ({
         ...t,
-        seatings: allVisits.filter(v => v.treatment_id === t.id)
+        sittings: allVisits.filter(v => v.treatment_id === t.id)
     }));
     const oldRecords = db.prepare('SELECT * FROM old_records WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    res.json({ patient, treatments: treatmentsWithSeatings, oldRecords });
+    res.json({ patient, treatments: treatmentsWithSittings, oldRecords });
 });
 
 // POST create patient
@@ -161,12 +161,12 @@ app.post('/api/patients', (req, res) => {
 
 // PUT update patient
 app.put('/api/patients/:id', (req, res) => {
-    const { case_no, name, age, sex, address, phone, referred_by, referrer_phone } = req.body;
+    const { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
     try {
         db.prepare(`
-      UPDATE patients SET case_no=?, name=?, age=?, sex=?, address=?, phone=?, referred_by=?, referrer_phone=?
+      UPDATE patients SET case_no=?, name=?, age=?, sex=?, address=?, phone=?, referred_by=?, referrer_phone=?, created_date=?
       WHERE id=?
-    `).run(case_no, name, age || null, sex, address, phone, referred_by, referrer_phone, req.params.id);
+    `).run(case_no, name, age || null, sex, address, phone, referred_by, referrer_phone, created_date, req.params.id);
         res.json({ message: 'Patient updated successfully' });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
@@ -194,11 +194,11 @@ app.get('/api/patients/:id/treatments', (req, res) => {
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
     const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const withSeatings = treatments.map(t => ({
+    const withSittings = treatments.map(t => ({
         ...t,
-        seatings: allVisits.filter(v => v.treatment_id === t.id)
+        sittings: allVisits.filter(v => v.treatment_id === t.id)
     }));
-    res.json(withSeatings);
+    res.json(withSittings);
 });
 
 // POST create treatment
@@ -213,7 +213,7 @@ app.post('/api/treatments', (req, res) => {
     INSERT INTO treatments (patient_id, name, description, created_date)
     VALUES (?, ?, ?, ?)
   `).run(pid, (name && name.trim()) || name, description || null, (created_date && created_date.trim()) || getTodayFormatted());
-    res.json({ id: info.lastInsertRowid, message: 'Treatment created', seatings: [] });
+    res.json({ id: info.lastInsertRowid, message: 'Treatment created', sittings: [] });
 });
 
 // GET treatment report as PDF (patient + treatment + seatings) – must be before /:id
@@ -223,63 +223,22 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
     if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
     const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(treatment.patient_id);
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const seatings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY visit_date, id').all(treatmentId);
+    const sittings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY visit_date, id').all(treatmentId);
 
-    const safe = (s) => (s == null || s === '' ? '-' : String(s));
-    const safeFilename = (s) => (s || 'report').replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
-    const truncateToWidth = (doc, str, maxWidth) => {
-        const s = String(str || '-');
-        if (typeof doc.widthOfString !== 'function') {
-            const maxChars = Math.max(8, Math.floor(maxWidth / 4));
-            return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..';
-        }
-        if (doc.widthOfString(s) <= maxWidth) return s;
-
-        let low = 0;
-        let high = s.length;
-        let ans = 0;
-
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            const tryStr = s.slice(0, mid) + '..';
-            if (doc.widthOfString(tryStr) <= maxWidth) {
-                ans = mid;
-                low = mid + 1;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return ans > 0 ? s.slice(0, ans) + '..' : '..';
-    };
+    const safe = (s) => (s == null || s === '' ? '-' : String(s).toUpperCase());
+    const safeFilename = (s) => (s || 'REPORT').toUpperCase().replace(/[^A-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
+    // Fast O(1) char-limit truncation — no widthOfString loops
+    const colCharLimits = [8, 6, 14, 11, 8, 10, 11];
+    const truncate = (str, maxChars) => { const s = String(str || '-'); return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..'; };
     const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_report.pdf`;
 
-    const chunks = [];
-    const bufferStream = new Writable({
-        write(chunk, encoding, callback) {
-            chunks.push(chunk);
-            callback();
-        }
-    });
+    // Stream directly to response — no buffering delay
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    const sendError = (msg) => {
-        if (!res.headersSent) res.status(500).json({ error: msg || 'Failed to generate PDF' });
-    };
-
-    bufferStream.on('finish', () => {
-        if (res.headersSent) return;
-        const buf = Buffer.concat(chunks);
-        res.writeHead(200, {
-            'Content-Type': 'application/pdf',
-            'Content-Disposition': `attachment; filename="${filename}"`,
-            'Content-Length': buf.length
-        });
-        res.end(buf);
-    });
-    bufferStream.on('error', () => sendError('PDF stream error'));
-
-    const doc = new PDFDocument({ margin: 48 });
-    doc.on('error', () => sendError('PDF generation error'));
-    doc.pipe(bufferStream);
+    const doc = new PDFDocument({ margin: 48, bufferPages: false });
+    doc.on('error', (err) => { console.error('PDF error:', err); });
+    doc.pipe(res);
 
     try {
         // Theme: match website (Deep Teal, Warm Orange, Soft Grey-Blue)
@@ -315,24 +274,24 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
             console.error('Logo add failed:', e);
         }
 
-        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("Vimisha's Dental Clinic", margin + 50, 16);
-        doc.font('Helvetica').fontSize(11).text('Treatment Report', margin + 50, 34);
+        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("VIMISHA'S DENTAL CLINIC", margin + 50, 16);
+        doc.font('Helvetica').fontSize(11).text('TREATMENT REPORT', margin + 50, 34);
         y = 70;
 
         // Patient details
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Patient Details', margin, y);
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('PATIENT DETAILS', margin, y);
         y += lineHeight + 4;
         doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
         const referredVal = [patient.referred_by, patient.referrer_phone ? `(${patient.referrer_phone})` : ''].filter(Boolean).join(' ') || '-';
         const patientLines = [
-            ['Name', patient.name],
-            ['Case No.', patient.case_no],
-            ['Age', patient.age],
-            ['Sex', patient.sex === 'M' ? 'Male' : patient.sex === 'F' ? 'Female' : patient.sex],
-            ['Address', patient.address],
-            ['Phone', patient.phone],
-            ['Referred by', referredVal],
-            ['Registered', patient.created_date]
+            ['NAME', patient.name],
+            ['CASE NO.', patient.case_no],
+            ['AGE', patient.age],
+            ['SEX', patient.sex === 'M' ? 'MALE' : patient.sex === 'F' ? 'FEMALE' : patient.sex],
+            ['ADDRESS', patient.address],
+            ['PHONE', patient.phone],
+            ['REFERRED BY', referredVal],
+            ['REGISTERED', patient.created_date]
         ];
         patientLines.forEach(([label, val]) => {
             doc.font('Helvetica-Bold').fillColor(theme.textMuted).text(`${label}: `, margin, y, { continued: true });
@@ -342,33 +301,33 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
         y += sectionGap;
 
         // Treatment details
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Treatment Details', margin, y);
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('TREATMENT DETAILS', margin, y);
         y += lineHeight + 4;
         doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
-        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Name: ', margin, y, { continued: true });
+        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('NAME: ', margin, y, { continued: true });
         doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.name));
         y += lineHeight;
         if (treatment.description) {
-            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Description: ', margin, y, { continued: true });
+            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('DESCRIPTION: ', margin, y, { continued: true });
             doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.description));
             y += lineHeight;
         }
-        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('Started: ', margin, y, { continued: true });
+        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('STARTED: ', margin, y, { continued: true });
         doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.created_date));
         y += sectionGap;
 
-        // Seatings
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('Seatings / Visit Log', margin, y);
+        // Sittings
+        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('SITTINGS / VISIT LOG', margin, y);
         y += lineHeight + 6;
 
         const rowHeight = 22;
         const cellPadding = 6;
         const colWidths = [44, 32, 72, 58, 42, 52, 58];
 
-        if (seatings.length === 0) {
-            doc.font('Helvetica').fontSize(bodySize).fillColor(theme.textMuted).text('No seatings recorded for this treatment.', margin, y);
+        if (sittings.length === 0) {
+            doc.font('Helvetica').fontSize(bodySize).fillColor(theme.textMuted).text('No sittings recorded for this treatment.', margin, y);
         } else {
-            const headers = ['Date', 'Time', 'Work Done', 'Findings', 'Payment', 'Next Appt', 'Notes'];
+            const headers = ['DATE', 'TIME', 'WORK DONE', 'FINDINGS', 'PAYMENT', 'NEXT APPT', 'NOTES'];
             const tableTop = y;
 
             // Table header (primary-light bg, primary text, site border)
@@ -381,8 +340,8 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
             });
             y = tableTop + rowHeight;
 
-            for (let i = 0; i < seatings.length; i++) {
-                const s = seatings[i];
+            for (let i = 0; i < sittings.length; i++) {
+                const s = sittings[i];
                 if (y > doc.page.height - 72) {
                     doc.addPage();
                     y = margin;
@@ -396,9 +355,7 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
                 const nextApptStr = s.next_appointment_date ? safe(s.next_appointment_date) + (s.next_appointment_time ? ' ' + s.next_appointment_time : '') : '-';
                 const cells = [safe(s.visit_date), safe(s.visit_time), safe(s.work_done), safe(s.findings), paymentStr, nextApptStr, safe(s.notes)];
                 cells.forEach((cell, ci) => {
-                    const cellWidth = colWidths[ci] - 2;
-                    const text = truncateToWidth(doc, cell, cellWidth);
-                    doc.text(text, x, rowY + 6, { width: cellWidth, lineBreak: false });
+                    doc.text(truncate(cell, colCharLimits[ci]), x, rowY + 6, { width: colWidths[ci] - 2, lineBreak: false });
                     x += colWidths[ci];
                 });
                 y += rowHeight;
@@ -409,8 +366,8 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
         const footerY = doc.page.height - 36;
         doc.page.margins.bottom = 0; // Prevent automatic page break from footer
         doc.fillColor(theme.textMuted).font('Helvetica').fontSize(9);
-        doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, margin, footerY, { lineBreak: false });
-        doc.text("Vimisha's Dental Clinic — Confidential Treatment Record", margin, footerY + 12, { width: pageWidth, align: 'center', lineBreak: false });
+        doc.text(`GENERATED: ${new Date().toLocaleString('en-IN').toUpperCase()}`, margin, footerY, { lineBreak: false });
+        doc.text("VIMISHA'S DENTAL CLINIC — CONFIDENTIAL TREATMENT RECORD", margin, footerY + 12, { width: pageWidth, align: 'center', lineBreak: false });
 
         doc.end();
     } catch (err) {
@@ -422,8 +379,8 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
 app.get('/api/treatments/:id', (req, res) => {
     const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
     if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
-    const seatings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY id DESC').all(req.params.id);
-    res.json({ ...treatment, seatings });
+    const sittings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY id DESC').all(req.params.id);
+    res.json({ ...treatment, sittings });
 });
 
 // PUT update treatment
@@ -484,7 +441,7 @@ app.post('/api/visits', (req, res) => {
     INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(patient_id, treatment_id, visit_date || getTodayFormatted(), visit_time, work_done, findings, payment || 0, next_appointment_date, next_appointment_time, notes);
-    res.json({ id: info.lastInsertRowid, message: 'Seating recorded successfully' });
+    res.json({ id: info.lastInsertRowid, message: 'Sitting recorded successfully' });
 });
 
 // PUT update visit (seating)

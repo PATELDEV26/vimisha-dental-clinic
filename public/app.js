@@ -6,13 +6,35 @@
 // ── State ──────────────────────────────────────────────────────
 let currentPatientId = null;
 let currentTreatmentId = null;
-let currentTreatmentViewId = null; // when set, profile shows this treatment's seatings
-let currentProfileTreatments = []; // treatments with seatings, set in loadProfile
+let currentTreatmentViewId = null; // when set, profile shows this treatment's sittings
+let currentProfileTreatments = []; // treatments with sittings, set in loadProfile
 
 // ── Helpers ────────────────────────────────────────────────────
 function getTodayFormatted() {
   const d = new Date();
   return `${d.getDate()}/${d.getMonth() + 1}/${String(d.getFullYear()).slice(-2)}`;
+}
+
+function formatDateInput(e) {
+  let val = e.target.value.replace(/\D/g, ''); // Remove non-digits
+  if (val.length > 6) val = val.substring(0, 6); // Cap at DDMMYY
+
+  let formatted = '';
+  if (val.length > 0) {
+    formatted += val.substring(0, 2);
+    if (val.length > 2) {
+      formatted += '/' + val.substring(2, 4);
+      if (val.length > 4) {
+        formatted += '/' + val.substring(4, 6);
+      }
+    }
+  }
+  // If the user is deleting, don't force formatting if it makes it hard
+  if (e.inputType === 'deleteContentBackward' && e.target.value.endsWith('/')) {
+     // allow deletion of the slash
+  } else {
+     e.target.value = formatted;
+  }
 }
 
 function formatDateForDisplay() {
@@ -117,6 +139,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setupForms();
   setupModals();
   setupOldRecords();
+
+  // Auto-slash for dates
+  document.getElementById('visitNextDate')?.addEventListener('input', formatDateInput);
+  document.getElementById('regDate')?.addEventListener('input', formatDateInput);
+  document.getElementById('editRegDate')?.addEventListener('input', formatDateInput);
+  document.getElementById('treatmentCreatedDate')?.addEventListener('input', formatDateInput);
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -320,7 +348,7 @@ async function loadPatients(search = '') {
 }
 
 async function deletePatient(id, name) {
-  if (!confirm(`Are you sure you want to delete patient "${name}" and all their treatments and seatings?`)) return;
+  if (!confirm(`Are you sure you want to delete patient "${name}" and all their treatments and sittings?`)) return;
   try {
     await api(`/api/patients/${id}`, { method: 'DELETE' });
     flash('Patient deleted successfully');
@@ -343,6 +371,7 @@ async function loadProfile(id, options = {}) {
       <div class="profile-info">
         <div class="profile-name">${escapeHtml(patient.name)}</div>
         <span class="profile-case">📋 ${escapeHtml(patient.case_no)}</span>
+        <input type="hidden" id="profileCaseNo" value="${escapeHtml(patient.case_no)}" />
 
         <div class="profile-detail">
           <span class="profile-detail-label">Age</span>
@@ -392,19 +421,19 @@ function renderTreatmentsContent(patientId) {
   const treatments = currentProfileTreatments || [];
   const profileGrid = document.querySelector('.profile-grid');
 
-  // Viewing a specific treatment's seatings – hide patient card so seatings get full width
+  // Viewing a specific treatment's sittings – hide patient card so sittings get full width
   if (currentTreatmentViewId != null) {
-    if (profileGrid) profileGrid.classList.add('profile-viewing-seatings');
+    if (profileGrid) profileGrid.classList.add('profile-viewing-sittings');
     const t = treatments.find(tr => tr.id === currentTreatmentViewId);
     if (!t) {
       currentTreatmentViewId = null;
       renderTreatmentsContent(patientId);
       return;
     }
-    const seatings = t.seatings || [];
-    const seatingsRows = seatings.length === 0
-      ? `<tr><td colspan="8" class="text-center empty-state">No seatings yet. Add one below.</td></tr>`
-      : seatings.map(s => `
+    const sittings = t.sittings || [];
+    const sittingsRows = sittings.length === 0
+      ? `<tr><td colspan="8" class="text-center empty-state">No sittings yet. Add one below.</td></tr>`
+      : sittings.map(s => `
         <tr>
           <td>${escapeHtml(s.visit_date)}</td>
           <td>${escapeHtml(s.visit_time) || '—'}</td>
@@ -414,8 +443,8 @@ function renderTreatmentsContent(patientId) {
           <td>${s.next_appointment_date ? escapeHtml(s.next_appointment_date) + (s.next_appointment_time ? ' at ' + escapeHtml(s.next_appointment_time) : '') : '—'}</td>
           <td>${escapeHtml(s.notes) || '—'}</td>
           <td class="td-actions">
-            <button type="button" class="btn btn-outline btn-sm" data-action="edit-seating" data-visit-id="${s.id}">✏️ Edit</button>
-            <button type="button" class="btn btn-danger btn-sm" data-action="delete-seating" data-visit-id="${s.id}">🗑️ Delete</button>
+            <button type="button" class="btn btn-outline btn-sm" data-action="edit-sitting" data-visit-id="${s.id}">✏️ Edit</button>
+            <button type="button" class="btn btn-danger btn-sm" data-action="delete-sitting" data-visit-id="${s.id}">🗑️ Delete</button>
           </td>
         </tr>
       `).join('');
@@ -428,14 +457,14 @@ function renderTreatmentsContent(patientId) {
           ${t.description ? `<p class="treatment-description">${escapeHtml(t.description)}</p>` : ''}
           <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
           <div class="treatment-detail-actions">
-            <button type="button" class="btn btn-primary" data-action="add-seating" data-treatment-id="${t.id}" data-treatment-name="${escapeHtml(t.name)}">➕ Add Seating</button>
+            <button type="button" class="btn btn-primary" data-action="add-sitting" data-treatment-id="${t.id}" data-treatment-name="${escapeHtml(t.name)}">➕ Add Sitting</button>
             <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
             <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit treatment</button>
             <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete treatment</button>
           </div>
         </div>
         <div class="table-wrap">
-          <table class="data-table seating-table">
+          <table class="data-table sitting-table">
             <thead>
               <tr>
                 <th>Date</th>
@@ -448,7 +477,7 @@ function renderTreatmentsContent(patientId) {
                 <th>Actions</th>
               </tr>
             </thead>
-            <tbody>${seatingsRows}</tbody>
+            <tbody>${sittingsRows}</tbody>
           </table>
         </div>
       </div>
@@ -456,15 +485,15 @@ function renderTreatmentsContent(patientId) {
     return;
   }
 
-  if (profileGrid) profileGrid.classList.remove('profile-viewing-seatings');
+  if (profileGrid) profileGrid.classList.remove('profile-viewing-sittings');
 
-  // List of treatments (no seatings inline)
+  // List of treatments (no sittings inline)
   if (treatments.length === 0) {
     container.innerHTML = `
       <div class="empty-state treatments-empty">
         <span class="empty-icon">🦷</span>
-        <p>No treatments yet. Add a treatment to start recording seatings.</p>
-        <p class="treatments-empty-hint">Workflow: Create a treatment → View it → Add seatings.</p>
+        <p>No treatments yet. Add a treatment to start recording sittings.</p>
+        <p class="treatments-empty-hint">Workflow: Create a treatment → View it → Add sittings.</p>
         <button type="button" class="btn btn-primary btn-lg" id="emptyStateAddTreatmentBtn">➕ Add your first treatment</button>
       </div>
     `;
@@ -486,7 +515,7 @@ function renderTreatmentsContent(patientId) {
           <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
         </div>
         <div class="treatment-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-action="view-treatment" data-treatment-id="${t.id}">👁️ View seatings</button>
+          <button type="button" class="btn btn-primary btn-sm" data-action="view-treatment" data-treatment-id="${t.id}">👁️ View sittings</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit</button>
           <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete</button>
@@ -496,43 +525,43 @@ function renderTreatmentsContent(patientId) {
   `).join('');
 }
 
-function openAddSeatingModal(treatmentId, treatmentName) {
+function openAddSittingModal(treatmentId, treatmentName) {
   const tid = parseInt(treatmentId, 10);
   if (!tid) return;
   currentTreatmentId = tid;
-  document.getElementById('visitModalTitle').textContent = '➕ Add Seating' + (treatmentName ? ` — ${treatmentName}` : '');
+  document.getElementById('visitModalTitle').textContent = '➕ Add Sitting' + (treatmentName ? ` — ${treatmentName}` : '');
   document.getElementById('visitForm').reset();
   document.getElementById('visitEditId').value = '';
   document.getElementById('visitTreatmentId').value = tid;
   document.getElementById('visitDate').value = getTodayFormatted();
-  document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Seating';
+  document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Sitting';
   document.getElementById('visitModal').classList.add('show');
 }
 
-function openEditSeatingModal(visitId) {
+function openEditSittingModal(visitId) {
   const id = parseInt(visitId, 10);
-  const seating = currentProfileTreatments.flatMap(t => (t.seatings || []).map(s => ({ ...s, treatment_id: t.id }))).find(s => s.id === id);
-  if (!seating) return;
-  document.getElementById('visitModalTitle').textContent = '✏️ Edit Seating';
-  document.getElementById('visitEditId').value = seating.id;
-  document.getElementById('visitTreatmentId').value = seating.treatment_id;
-  document.getElementById('visitDate').value = seating.visit_date || '';
-  document.getElementById('visitTime').value = seating.visit_time || '';
-  document.getElementById('visitWorkDone').value = seating.work_done || '';
-  document.getElementById('visitFindings').value = seating.findings || '';
-  document.getElementById('visitPayment').value = seating.payment || 0;
-  document.getElementById('visitNextDate').value = seating.next_appointment_date || '';
-  document.getElementById('visitNextTime').value = seating.next_appointment_time || '';
-  document.getElementById('visitNotes').value = seating.notes || '';
-  document.getElementById('visitFormSubmitBtn').textContent = '💾 Update Seating';
+  const sitting = currentProfileTreatments.flatMap(t => (t.sittings || []).map(s => ({ ...s, treatment_id: t.id }))).find(s => s.id === id);
+  if (!sitting) return;
+  document.getElementById('visitModalTitle').textContent = '✏️ Edit Sitting';
+  document.getElementById('visitEditId').value = sitting.id;
+  document.getElementById('visitTreatmentId').value = sitting.treatment_id;
+  document.getElementById('visitDate').value = sitting.visit_date || '';
+  document.getElementById('visitTime').value = sitting.visit_time || '';
+  document.getElementById('visitWorkDone').value = sitting.work_done || '';
+  document.getElementById('visitFindings').value = sitting.findings || '';
+  document.getElementById('visitPayment').value = sitting.payment || 0;
+  document.getElementById('visitNextDate').value = sitting.next_appointment_date || '';
+  document.getElementById('visitNextTime').value = sitting.next_appointment_time || '';
+  document.getElementById('visitNotes').value = sitting.notes || '';
+  document.getElementById('visitFormSubmitBtn').textContent = '💾 Update Sitting';
   document.getElementById('visitModal').classList.add('show');
 }
 
-async function deleteSeating(visitId, patientId) {
-  if (!confirm('Delete this seating record?')) return;
+async function deleteSitting(visitId, patientId) {
+  if (!confirm('Delete this sitting record?')) return;
   try {
     await api(`/api/visits/${visitId}`, { method: 'DELETE' });
-    flash('Seating deleted.');
+    flash('Sitting deleted.');
     loadProfile(patientId != null ? patientId : currentPatientId, { keepTreatmentView: currentTreatmentViewId });
   } catch (_) { }
 }
@@ -545,7 +574,7 @@ function openEditTreatmentModal(id, name, description) {
 }
 
 async function deleteTreatment(treatmentId, patientId, name) {
-  if (!confirm(`Delete treatment "${name}" and all its seatings?`)) return;
+  if (!confirm(`Delete treatment "${name}" and all its sittings?`)) return;
   try {
     await api(`/api/treatments/${treatmentId}`, { method: 'DELETE' });
     flash('Treatment deleted.');
@@ -608,15 +637,15 @@ function setupForms() {
     try {
       if (editId) {
         await api(`/api/visits/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
-        flash('Seating updated! ✅');
+        flash('Sitting updated! ✅');
       } else {
         const tid = treatmentId ? parseInt(treatmentId, 10) : 0;
-        if (!tid) { flash('Please open a treatment and use Add Seating.', 'error'); return; }
+        if (!tid) { flash('Please open a treatment and use Add Sitting.', 'error'); return; }
         await api('/api/visits', { method: 'POST', body: JSON.stringify({ treatment_id: tid, ...body }) });
-        flash('Seating recorded successfully! 🎉');
+        flash('Sitting recorded successfully! 🎉');
       }
       closeVisitModal();
-      document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Seating';
+      document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Sitting';
       if (currentPatientId) loadProfile(currentPatientId, { keepTreatmentView: currentTreatmentViewId });
     } catch (_) { }
   });
@@ -639,6 +668,7 @@ function setupForms() {
       phone: document.getElementById('editPhone').value.trim(),
       referred_by: document.getElementById('editReferredBy').value.trim(),
       referrer_phone: document.getElementById('editReferrerPhone').value.trim(),
+      created_date: document.getElementById('editRegDate').value.trim(),
     };
 
     try {
@@ -786,17 +816,17 @@ function setupModals() {
     } else if (action === 'back-to-treatments') {
       currentTreatmentViewId = null;
       renderTreatmentsContent(currentPatientId);
-    } else if (action === 'add-seating' && treatmentId) {
-      openAddSeatingModal(treatmentId, treatmentName);
+    } else if (action === 'add-sitting' && treatmentId) {
+      openAddSittingModal(treatmentId, treatmentName);
     } else if (action === 'edit-treatment' && treatmentId) {
       const t = currentProfileTreatments.find(tr => tr.id === parseInt(treatmentId, 10));
       if (t) openEditTreatmentModal(t.id, t.name || '', t.description || '');
     } else if (action === 'delete-treatment' && treatmentId && patientId) {
       deleteTreatment(parseInt(treatmentId, 10), parseInt(patientId, 10), treatmentName);
-    } else if (action === 'edit-seating' && visitId) {
-      openEditSeatingModal(visitId);
-    } else if (action === 'delete-seating' && visitId) {
-      deleteSeating(visitId, currentPatientId);
+    } else if (action === 'edit-sitting' && visitId) {
+      openEditSittingModal(visitId);
+    } else if (action === 'delete-sitting' && visitId) {
+      deleteSitting(visitId, currentPatientId);
     } else if (action === 'download-treatment-pdf' && treatmentId) {
       window.open('/api/treatments/' + treatmentId + '/pdf', '_blank');
     }
@@ -818,6 +848,7 @@ async function openEditPatient(id) {
     document.getElementById('editPhone').value = patient.phone || '';
     document.getElementById('editReferredBy').value = patient.referred_by || '';
     document.getElementById('editReferrerPhone').value = patient.referrer_phone || '';
+    document.getElementById('editRegDate').value = patient.created_date || '';
 
     // Set sex radio
     document.querySelectorAll('input[name="editSex"]').forEach(r => r.checked = false);
@@ -936,6 +967,10 @@ function setupOldRecords() {
                 <span>Patient ID: ${patientId} (from profile)</span>
                 <button type="button" class="or-clear" onclick="clearOldRecordPatient()">&times;</button>
             `;
+      
+      // Auto-fill Case No from hidden input in profile
+      const profileCaseNo = document.getElementById('profileCaseNo')?.value || '';
+      document.getElementById('orCaseNo').value = profileCaseNo;
     } else {
       document.getElementById('orPatientSearch').style.display = '';
     }

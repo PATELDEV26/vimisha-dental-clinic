@@ -177,8 +177,7 @@
               <input
                 type="text"
                 id="regDate"
-                placeholder="Auto-filled to today"
-                readonly
+                placeholder="e.g. 9/3/26"
               />
             </div>
           </div>
@@ -343,7 +342,7 @@
     <div class="modal-overlay" id="visitModal">
       <div class="modal">
         <div class="modal-header">
-          <h3 id="visitModalTitle">➕ Add Seating</h3>
+          <h3 id="visitModalTitle">➕ Add Sitting</h3>
           <button class="modal-close" id="closeModal">&times;</button>
         </div>
         <form id="visitForm">
@@ -400,7 +399,7 @@
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-lg" id="visitFormSubmitBtn">
-            💾 Save Seating
+            💾 Save Sitting
           </button>
         </form>
       </div>
@@ -509,6 +508,10 @@
             <div class="form-group">
               <label for="editReferrerPhone">Referrer Phone</label>
               <input type="text" id="editReferrerPhone" oninput="this.value = this.value.replace(/[^0-9]/g, '')" />
+            </div>
+            <div class="form-group">
+              <label for="editRegDate">Date of Registration</label>
+              <input type="text" id="editRegDate" placeholder="e.g. 9/3/26" />
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-lg">

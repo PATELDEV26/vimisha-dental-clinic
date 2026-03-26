@@ -1,0 +1,12 @@
+﻿node_modules/
+clinic.db
+clinic.db-shm
+clinic.db-wal
+ngrok-log.txt
+ngrok.exe
+server-error.txt
+server-log.txt
+server-ready.txt
+uploads/
+.DS_Store
+Thumbs.db

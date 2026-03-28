@@ -52,6 +52,22 @@ function flash(message, type = 'success') {
 
 async function api(url, options = {}) {
   try {
+    if (options.body && typeof options.body === 'string') {
+      const parsed = JSON.parse(options.body);
+      const uppercaseDeep = (obj) => {
+        if (typeof obj === 'string') return obj.toUpperCase();
+        if (Array.isArray(obj)) return obj.map(uppercaseDeep);
+        if (obj !== null && typeof obj === 'object') {
+          return Object.keys(obj).reduce((acc, key) => {
+            acc[key] = uppercaseDeep(obj[key]);
+            return acc;
+          }, {});
+        }
+        return obj;
+      };
+      options.body = JSON.stringify(uppercaseDeep(parsed));
+    }
+
     const res = await fetch(url, {
       headers: { 'Content-Type': 'application/json' },
       ...options,

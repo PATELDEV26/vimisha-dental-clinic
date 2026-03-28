@@ -143,8 +143,16 @@ app.get('/api/patients/:id', (req, res) => {
 
 // POST create patient
 app.post('/api/patients', (req, res) => {
-    const { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
+    let { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
+
+    // Enforce uppercase
+    name = (name || '').toUpperCase();
+    case_no = (case_no || '').toUpperCase();
+    sex = (sex || '').toUpperCase();
+    address = (address || '').toUpperCase();
+    referred_by = (referred_by || '').toUpperCase();
+    
     try {
         const info = db.prepare(`
       INSERT INTO patients (case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date)
@@ -161,7 +169,15 @@ app.post('/api/patients', (req, res) => {
 
 // PUT update patient
 app.put('/api/patients/:id', (req, res) => {
-    const { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
+    let { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
+    
+    // Enforce uppercase
+    name = (name || '').toUpperCase();
+    case_no = (case_no || '').toUpperCase();
+    sex = (sex || '').toUpperCase();
+    address = (address || '').toUpperCase();
+    referred_by = (referred_by || '').toUpperCase();
+
     try {
         db.prepare(`
       UPDATE patients SET case_no=?, name=?, age=?, sex=?, address=?, phone=?, referred_by=?, referrer_phone=?, created_date=?
@@ -203,12 +219,17 @@ app.get('/api/patients/:id/treatments', (req, res) => {
 
 // POST create treatment
 app.post('/api/treatments', (req, res) => {
-    const { patient_id, name, description, created_date } = req.body;
+    let { patient_id, name, description, created_date } = req.body;
     const pid = patient_id != null ? parseInt(patient_id, 10) : NaN;
     if (!name || (typeof name === 'string' && !name.trim())) return res.status(400).json({ error: 'Treatment name is required' });
     if (!pid || isNaN(pid)) return res.status(400).json({ error: 'Patient ID is required' });
     const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(pid);
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    // Enforce uppercase
+    name = (name || '').toUpperCase();
+    description = (description || '').toUpperCase();
+
     const info = db.prepare(`
     INSERT INTO treatments (patient_id, name, description, created_date)
     VALUES (?, ?, ?, ?)
@@ -227,147 +248,122 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
 
     const safe = (s) => (s == null || s === '' ? '-' : String(s).toUpperCase());
     const safeFilename = (s) => (s || 'REPORT').toUpperCase().replace(/[^A-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
-    // Fast O(1) char-limit truncation — no widthOfString loops
     const colCharLimits = [8, 6, 14, 11, 8, 10, 11];
-    const truncate = (str, maxChars) => { const s = String(str || '-'); return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..'; };
-    const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_report.pdf`;
+    const truncate = (str, maxChars) => { const s = String(str || '-').toUpperCase(); return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..'; };
+    const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_REPORT.pdf`;
 
-    // Stream directly to response — no buffering delay
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-    const doc = new PDFDocument({ margin: 48, bufferPages: false });
+    const doc = new PDFDocument({ margin: 40, bufferPages: false });
     doc.on('error', (err) => { console.error('PDF error:', err); });
     doc.pipe(res);
 
     try {
-        // Theme: match website (Deep Teal, Warm Orange, Soft Grey-Blue)
-        const theme = {
-            primary: '#0B6E6E',
-            primaryLight: '#E8F5F5',
-            accent: '#F4A261',
-            bg: '#F0F4F8',
-            cardBg: '#FFFFFF',
-            textDark: '#1A2B3C',
-            textMuted: '#6B7A8D',
-            border: '#E2E8F0'
-        };
-
-        const margin = 48;
-        const lineHeight = 14;
-        const sectionGap = 24;
-        const headingSize = 11;
-        const bodySize = 10;
-        let y = margin;
+        const margin = 40;
         const pageWidth = doc.page.width - margin * 2;
+        let y = margin;
 
-        // Header bar (primary teal) + accent line (orange), matching site header
-        doc.fillColor(theme.primary).rect(0, 0, doc.page.width, 52, 'F');
-        doc.fillColor(theme.accent).rect(0, 52, doc.page.width, 3, 'F');
-        // Logo
-        try {
-            const logoPath = path.join(__dirname, 'logo.png');
-            if (fs.existsSync(logoPath)) {
-                doc.image(logoPath, margin, 8, { height: 36 });
-            }
-        } catch (e) {
-            console.error('Logo add failed:', e);
-        }
+        // Simple Header
+        doc.font('Helvetica-Bold').fontSize(18).fillColor('#000000').text("VIMISHA'S DENTAL CLINIC", margin, y, { align: 'center' });
+        y += 22;
+        doc.fontSize(10).font('Helvetica').text('TREATMENT CASE RECORD', margin, y, { align: 'center' });
+        y += 20;
 
-        doc.fillColor('#F7F8F0').font('Helvetica-Bold').fontSize(20).text("VIMISHA'S DENTAL CLINIC", margin + 50, 16);
-        doc.font('Helvetica').fontSize(11).text('TREATMENT REPORT', margin + 50, 34);
-        y = 70;
+        // Thin separator line
+        doc.moveTo(margin, y).lineTo(margin + pageWidth, y).strokeColor('#000000').lineWidth(1).stroke();
+        y += 15;
 
-        // Patient details
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('PATIENT DETAILS', margin, y);
-        y += lineHeight + 4;
-        doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
-        const referredVal = [patient.referred_by, patient.referrer_phone ? `(${patient.referrer_phone})` : ''].filter(Boolean).join(' ') || '-';
-        const patientLines = [
+        // Patient Details Section (2 columns)
+        doc.fontSize(10).font('Helvetica-Bold').text('PATIENT INFORMATION', margin, y);
+        y += 15;
+        
+        const col1X = margin;
+        const col2X = margin + (pageWidth / 2);
+        let sectionY = y;
+
+        const leftSide = [
             ['NAME', patient.name],
             ['CASE NO.', patient.case_no],
-            ['AGE', patient.age],
-            ['SEX', patient.sex === 'M' ? 'MALE' : patient.sex === 'F' ? 'FEMALE' : patient.sex],
-            ['ADDRESS', patient.address],
-            ['PHONE', patient.phone],
-            ['REFERRED BY', referredVal],
-            ['REGISTERED', patient.created_date]
+            ['AGE / SEX', `${patient.age || '-'} / ${patient.sex === 'M' ? 'MALE' : patient.sex === 'F' ? 'FEMALE' : (patient.sex || '-')}`],
+            ['PHONE', patient.phone]
         ];
-        patientLines.forEach(([label, val]) => {
-            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text(`${label}: `, margin, y, { continued: true });
-            doc.font('Helvetica').fillColor(theme.textDark).text(safe(val));
-            y += lineHeight;
+        const rightSide = [
+            ['ADDRESS', patient.address],
+            ['REFERRED BY', [patient.referred_by, patient.referrer_phone ? `(${patient.referrer_phone})` : ''].filter(Boolean).join(' ')],
+            ['REG. DATE', patient.created_date]
+        ];
+
+        doc.font('Helvetica');
+        leftSide.forEach(([label, val]) => {
+            doc.font('Helvetica-Bold').text(`${label}: `, col1X, sectionY, { continued: true });
+            doc.font('Helvetica').text(safe(val));
+            sectionY += 14;
         });
-        y += sectionGap;
 
-        // Treatment details
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('TREATMENT DETAILS', margin, y);
-        y += lineHeight + 4;
-        doc.fillColor(theme.textDark).font('Helvetica').fontSize(bodySize);
-        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('NAME: ', margin, y, { continued: true });
-        doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.name));
-        y += lineHeight;
+        let sectionY2 = y;
+        rightSide.forEach(([label, val]) => {
+            doc.font('Helvetica-Bold').text(`${label}: `, col2X, sectionY2, { continued: true });
+            doc.font('Helvetica').text(safe(val));
+            sectionY2 += 14;
+        });
+
+        y = Math.max(sectionY, sectionY2) + 20;
+
+        // Treatment Header
+        doc.font('Helvetica-Bold').fontSize(11).text('TREATMENT:', margin, y, { continued: true });
+        doc.font('Helvetica').text(` ${safe(treatment.name)}`);
+        y += 14;
         if (treatment.description) {
-            doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('DESCRIPTION: ', margin, y, { continued: true });
-            doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.description));
-            y += lineHeight;
+            doc.font('Helvetica-Bold').text('REMARKS:', margin, y, { continued: true });
+            doc.font('Helvetica').text(` ${safe(treatment.description)}`);
+            y += 14;
         }
-        doc.font('Helvetica-Bold').fillColor(theme.textMuted).text('STARTED: ', margin, y, { continued: true });
-        doc.font('Helvetica').fillColor(theme.textDark).text(safe(treatment.created_date));
-        y += sectionGap;
+        y += 15;
 
-        // Sittings
-        doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(headingSize).text('SITTINGS / VISIT LOG', margin, y);
-        y += lineHeight + 6;
+        // Sittings Table
+        doc.font('Helvetica-Bold').fontSize(11).text('SITTINGS / VISIT RECORDS', margin, y);
+        y += 15;
 
-        const rowHeight = 22;
-        const cellPadding = 6;
-        const colWidths = [44, 32, 72, 58, 42, 52, 58];
+        const headers = ['DATE', 'TIME', 'WORK DONE', 'FINDINGS', 'PAYMENT', 'NEXT APPT', 'NOTES'];
+        const colWidths = [50, 40, 95, 80, 55, 65, 130]; // Adjusted for a cleaner look
+        const rowHeight = 20;
 
-        if (sittings.length === 0) {
-            doc.font('Helvetica').fontSize(bodySize).fillColor(theme.textMuted).text('No sittings recorded for this treatment.', margin, y);
-        } else {
-            const headers = ['DATE', 'TIME', 'WORK DONE', 'FINDINGS', 'PAYMENT', 'NEXT APPT', 'NOTES'];
-            const tableTop = y;
+        // Table Header
+        doc.rect(margin, y, pageWidth, rowHeight).stroke();
+        let currentX = margin;
+        doc.fontSize(8);
+        headers.forEach((h, i) => {
+            doc.text(h, currentX + 4, y + 6, { width: colWidths[i] - 8 });
+            currentX += colWidths[i];
+        });
+        y += rowHeight;
 
-            // Table header (primary-light bg, primary text, site border)
-            doc.rect(margin, tableTop, pageWidth, rowHeight).fillAndStroke(theme.primaryLight, theme.border);
-            doc.fillColor(theme.primary).font('Helvetica-Bold').fontSize(9);
-            let x = margin + cellPadding;
-            headers.forEach((h, i) => {
-                doc.text(h, x, tableTop + 6, { width: colWidths[i], lineBreak: false });
-                x += colWidths[i];
-            });
-            y = tableTop + rowHeight;
-
-            for (let i = 0; i < sittings.length; i++) {
-                const s = sittings[i];
-                if (y > doc.page.height - 72) {
-                    doc.addPage();
-                    y = margin;
-                }
-                const rowY = y;
-                const fill = i % 2 === 0 ? theme.bg : theme.cardBg;
-                doc.rect(margin, rowY, pageWidth, rowHeight).fillAndStroke(fill, theme.border);
-                doc.fillColor(theme.textDark).font('Helvetica').fontSize(9);
-                x = margin + cellPadding;
-                const paymentStr = s.payment ? 'Rs.' + Number(s.payment).toLocaleString('en-IN') : '-';
-                const nextApptStr = s.next_appointment_date ? safe(s.next_appointment_date) + (s.next_appointment_time ? ' ' + s.next_appointment_time : '') : '-';
-                const cells = [safe(s.visit_date), safe(s.visit_time), safe(s.work_done), safe(s.findings), paymentStr, nextApptStr, safe(s.notes)];
-                cells.forEach((cell, ci) => {
-                    doc.text(truncate(cell, colCharLimits[ci]), x, rowY + 6, { width: colWidths[ci] - 2, lineBreak: false });
-                    x += colWidths[ci];
-                });
-                y += rowHeight;
+        // Table Rows
+        sittings.forEach((s, idx) => {
+            if (y > doc.page.height - 60) {
+                doc.addPage();
+                y = margin;
             }
-        }
 
-        // Footer (text-muted, matching site)
-        const footerY = doc.page.height - 36;
-        doc.page.margins.bottom = 0; // Prevent automatic page break from footer
-        doc.fillColor(theme.textMuted).font('Helvetica').fontSize(9);
-        doc.text(`GENERATED: ${new Date().toLocaleString('en-IN').toUpperCase()}`, margin, footerY, { lineBreak: false });
-        doc.text("VIMISHA'S DENTAL CLINIC — CONFIDENTIAL TREATMENT RECORD", margin, footerY + 12, { width: pageWidth, align: 'center', lineBreak: false });
+            const paymentStr = s.payment ? 'RS.' + Number(s.payment).toLocaleString('en-IN') : '-';
+            const nextApptStr = s.next_appointment_date ? safe(s.next_appointment_date) : '-';
+            const cells = [safe(s.visit_date), safe(s.visit_time), safe(s.work_done), safe(s.findings), paymentStr, nextApptStr, safe(s.notes)];
+
+            doc.rect(margin, y, pageWidth, rowHeight).stroke();
+            currentX = margin;
+            cells.forEach((cell, ci) => {
+                doc.text(truncate(cell, colCharLimits[ci]), currentX + 4, y + 6, { width: colWidths[ci] - 8 });
+                currentX += colWidths[ci];
+            });
+            y += rowHeight;
+        });
+
+        // Footer
+        const footerY = doc.page.height - 40;
+        doc.fontSize(8).fillColor('#666666');
+        doc.text(`PRINTED ON: ${new Date().toLocaleString('en-IN').toUpperCase()}`, margin, footerY);
+        doc.text(`PAGE RECORD — VIMISHA'S DENTAL CLINIC`, margin, footerY, { align: 'right' });
 
         doc.end();
     } catch (err) {
@@ -385,9 +381,14 @@ app.get('/api/treatments/:id', (req, res) => {
 
 // PUT update treatment
 app.put('/api/treatments/:id', (req, res) => {
-    const { name, description } = req.body;
+    let { name, description } = req.body;
     const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
     if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+
+    // Enforce uppercase
+    name = name ? name.toUpperCase() : name;
+    description = description ? description.toUpperCase() : description;
+
     db.prepare('UPDATE treatments SET name = ?, description = ? WHERE id = ?').run(name ?? treatment.name, description !== undefined ? description : treatment.description, req.params.id);
     res.json({ message: 'Treatment updated' });
 });
@@ -432,11 +433,17 @@ app.get('/api/visits/upcoming', (req, res) => {
 
 // POST create visit (seating) – requires treatment_id
 app.post('/api/visits', (req, res) => {
-    const { treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    let { treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
     if (!treatment_id) return res.status(400).json({ error: 'Treatment ID is required' });
     const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(treatment_id);
     if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
     const patient_id = treatment.patient_id;
+
+    // Enforce uppercase
+    work_done = (work_done || '').toUpperCase();
+    findings = (findings || '').toUpperCase();
+    notes = (notes || '').toUpperCase();
+
     const info = db.prepare(`
     INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -446,9 +453,15 @@ app.post('/api/visits', (req, res) => {
 
 // PUT update visit (seating)
 app.put('/api/visits/:id', (req, res) => {
-    const { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    let { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
     const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
     if (!visit) return res.status(404).json({ error: 'Visit not found' });
+
+    // Enforce uppercase
+    work_done = work_done !== undefined ? work_done.toUpperCase() : undefined;
+    findings = findings !== undefined ? findings.toUpperCase() : undefined;
+    notes = notes !== undefined ? notes.toUpperCase() : undefined;
+
     db.prepare(`
     UPDATE visits SET visit_date = ?, visit_time = ?, work_done = ?, findings = ?, payment = ?, next_appointment_date = ?, next_appointment_time = ?, notes = ?
     WHERE id = ?

@@ -18,6 +18,40 @@
     />
     <link rel="stylesheet" href="style.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+      .header-right { display: flex; align-items: center; gap: 20px; }
+      .user-profile { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2); }
+      .user-photo { width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; }
+      .user-name { color: white; font-weight: 600; font-size: 0.9rem; }
+      .logout-pill { background: white; color: #0d9488; padding: 4px 12px; border-radius: 20px; text-decoration: none; font-size: 0.8rem; font-weight: 700; transition: all 0.2s; }
+      .logout-pill:hover { background: #f0fdfa; transform: translateY(-1px); }
+      @media (max-width: 600px) {
+        .user-name { display: none; }
+        .header-right { gap: 10px; }
+      }
+    </style>
+    <script>
+      // Authentication Check
+      async function checkAuth() {
+        try {
+          const res = await fetch('/api/me');
+          if (res.status === 401) {
+            window.location.href = '/login.html';
+            return;
+          }
+          const user = await res.json();
+          if (user) {
+            document.getElementById('userProfile').style.display = 'flex';
+            document.getElementById('userName').textContent = user.displayName;
+            document.getElementById('userPhoto').src = user.photos && user.photos[0] ? user.photos[0].value : 'https://ui-avatars.com/api/?name=' + user.displayName;
+          }
+        } catch (err) {
+          console.error('Auth check failed:', err);
+          window.location.href = '/login.html';
+        }
+      }
+      checkAuth();
+    </script>
   </head>
 
   <body>
@@ -49,6 +83,11 @@
       </div>
       <div class="header-right">
         <span class="live-date" id="liveDate"></span>
+        <div id="userProfile" class="user-profile" style="display: none;">
+          <img id="userPhoto" src="" alt="User" class="user-photo">
+          <span id="userName" class="user-name"></span>
+          <a href="/auth/logout" class="logout-pill">Logout</a>
+        </div>
       </div>
     </header>
 

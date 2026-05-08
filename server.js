@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const os = require('os');
@@ -5,11 +6,56 @@ const fs = require('fs');
 const { Writable } = require('stream');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
-const db = require('./database');
+const { PrismaClient } = require('@prisma/client');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 
+const prisma = new PrismaClient();
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
+
+// ── Auth Configuration ──────────────────────────────────────────
+const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: `${process.env.BASE_URL || 'http://localhost:3000'}/auth/google/callback`
+}, (accessToken, refreshToken, profile, done) => {
+    const email = profile.emails && profile.emails[0] ? profile.emails[0].value.toLowerCase() : null;
+    if (email && ALLOWED_EMAILS.includes(email)) {
+        return done(null, profile);
+    } else {
+        return done(null, false, { message: 'Unauthorized email' });
+    }
+}));
+
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
+
+// ── Middleware ──────────────────────────────────────────────────
+app.use(express.json());
+app.use(session({
+    store: new pgSession({
+        conString: process.env.DATABASE_URL,
+        tableName: 'session'
+    }),
+    secret: process.env.SESSION_SECRET || 'dental-clinic-secret',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 8 * 60 * 60 * 1000 } // 8 hours
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+function ensureAuthenticated(req, res, next) {
+    if (req.isAuthenticated()) return next();
+    res.status(401).json({ error: 'Unauthorized' });
+}
 
 // ── Ensure uploads directory exists ────────────────────────────
 const uploadsDir = path.join(__dirname, 'uploads', 'old_records');
@@ -51,10 +97,43 @@ const upload = multer({
     }
 });
 
-// ── Middleware ──────────────────────────────────────────────────
-app.use(express.json());
+// ── Public Routes ──────────────────────────────────────────────
+app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/unauthorized.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'unauthorized.html')));
+
+// ── Auth Routes ─────────────────────────────────────────────────
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+app.get('/auth/google/callback', (req, res, next) => {
+    passport.authenticate('google', (err, user, info) => {
+        if (err) return next(err);
+        if (!user) {
+            if (info && info.message === 'Unauthorized email') {
+                return res.redirect('/unauthorized.html');
+            }
+            return res.redirect('/login.html');
+        }
+        req.logIn(user, (err) => {
+            if (err) return next(err);
+            return res.redirect('/');
+        });
+    })(req, res, next);
+});
+
+app.get('/auth/logout', (req, res) => {
+    req.logout(() => {
+        res.redirect('/login.html');
+    });
+});
+
+app.get('/api/me', ensureAuthenticated, (req, res) => {
+    res.json(req.user);
+});
+
+// ── Protected API & Static Middleware ───────────────────────────
+app.use('/api', ensureAuthenticated);
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', ensureAuthenticated, express.static(path.join(__dirname, 'uploads')));
 
 // ── Helper: get today's date in D/M/YY format ──────────────────
 function getTodayFormatted() {
@@ -67,100 +146,141 @@ function getTodayFormatted() {
 // ════════════════════════════════════════════════════════════════
 
 // GET all patients (search: name, case_no, or phone – partial match)
-app.get('/api/patients', (req, res) => {
+app.get('/api/patients', async (req, res) => {
     const search = (req.query.search || '').trim();
-    let rows;
-    if (search) {
-        const pattern = `%${search}%`;
-        const prefix = `${search}%`;
-        // Union actual patients and unlinked old records
-        rows = db.prepare(`
-          SELECT * FROM (
-            SELECT 
-              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
-              NULL as file_path, NULL as description, 'patient' as type
-            FROM patients
-            WHERE name LIKE @q
-               OR case_no LIKE @q
-               OR phone LIKE @q
-               OR REPLACE(REPLACE(REPLACE(COALESCE(phone, ''), ' ', ''), '-', ''), '+', '') LIKE @q
+    try {
+        let patients;
+        if (search) {
+            patients = await prisma.patient.findMany({
+                where: {
+                    OR: [
+                        { name: { contains: search, mode: 'insensitive' } },
+                        { case_no: { contains: search, mode: 'insensitive' } },
+                        { phone: { contains: search, mode: 'insensitive' } }
+                    ]
+                },
+                orderBy: { id: 'desc' },
+                limit: 100
+            });
 
-            UNION ALL
+            const unlinkedRecords = await prisma.oldRecord.findMany({
+                where: {
+                    patient_id: null,
+                    OR: [
+                        { patient_name_manual: { contains: search, mode: 'insensitive' } },
+                        { case_no: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } }
+                    ]
+                },
+                orderBy: { id: 'desc' },
+                limit: 100
+            });
 
-            SELECT
-              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
-              file_path, description, 'old_record' as type
-            FROM old_records
-            WHERE patient_id IS NULL AND (patient_name_manual LIKE @q OR case_no LIKE @q OR description LIKE @q)
-          )
-          ORDER BY
-            CASE
-              WHEN type = 'patient' AND case_no = @exact THEN 1
-              WHEN type = 'patient' AND case_no LIKE @prefix THEN 2
-              WHEN type = 'old_record' AND case_no LIKE @prefix THEN 3
-              WHEN name LIKE @prefix THEN 4
-              ELSE 5
-            END,
-            id DESC
-          LIMIT 100
-        `).all({ q: pattern, prefix: prefix, exact: search });
-    } else {
-        rows = db.prepare(`
-          SELECT * FROM (
-            SELECT 
-              id, case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date,
-              NULL as file_path, NULL as description, 'patient' as type
-            FROM patients
+            // Format for UI
+            const formattedPatients = patients.map(p => ({ ...p, type: 'patient' }));
+            const formattedRecords = unlinkedRecords.map(r => ({
+                id: r.id,
+                case_no: r.case_no,
+                name: r.patient_name_manual,
+                age: null, sex: null, address: null, phone: null, referred_by: null, referrer_phone: null,
+                created_date: r.upload_date,
+                file_path: r.file_path,
+                description: r.description,
+                type: 'old_record'
+            }));
 
-            UNION ALL
+            res.json([...formattedPatients, ...formattedRecords]);
+        } else {
+            const patients = await prisma.patient.findMany({
+                orderBy: { id: 'desc' },
+                take: 100
+            });
+            const unlinkedRecords = await prisma.oldRecord.findMany({
+                where: { patient_id: null },
+                orderBy: { id: 'desc' },
+                take: 100
+            });
 
-            SELECT
-              id, case_no, patient_name_manual as name, NULL as age, NULL as sex, NULL as address, NULL as phone, NULL as referred_by, NULL as referrer_phone, upload_date as created_date,
-              file_path, description, 'old_record' as type
-            FROM old_records
-            WHERE patient_id IS NULL
-          )
-          ORDER BY id DESC
-          LIMIT 100
-        `).all();
+            const formattedPatients = patients.map(p => ({ ...p, type: 'patient' }));
+            const formattedRecords = unlinkedRecords.map(r => ({
+                id: r.id,
+                case_no: r.case_no,
+                name: r.patient_name_manual,
+                age: null, sex: null, address: null, phone: null, referred_by: null, referrer_phone: null,
+                created_date: r.upload_date,
+                file_path: r.file_path,
+                description: r.description,
+                type: 'old_record'
+            }));
+
+            res.json([...formattedPatients, ...formattedRecords]);
+        }
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    res.json(rows);
 });
 
 // GET single patient + treatments (with seatings) + oldRecords
-app.get('/api/patients/:id', (req, res) => {
-    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(req.params.id);
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const treatmentsWithSittings = treatments.map(t => ({
-        ...t,
-        sittings: allVisits.filter(v => v.treatment_id === t.id)
-    }));
-    const oldRecords = db.prepare('SELECT * FROM old_records WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    res.json({ patient, treatments: treatmentsWithSittings, oldRecords });
+app.get('/api/patients/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const patient = await prisma.patient.findUnique({
+            where: { id },
+            include: {
+                treatments: {
+                    include: { visits: { orderBy: { id: 'desc' } } },
+                    orderBy: { id: 'desc' }
+                },
+                old_records: { orderBy: { id: 'desc' } }
+            }
+        });
+
+        if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+        // Format to match old structure
+        const formattedTreatments = patient.treatments.map(t => ({
+            ...t,
+            sittings: t.visits
+        }));
+
+        res.json({
+            patient: { ...patient, treatments: undefined, old_records: undefined },
+            treatments: formattedTreatments,
+            oldRecords: patient.old_records
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST create patient
-app.post('/api/patients', (req, res) => {
+app.post('/api/patients', async (req, res) => {
     let { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
     if (!name) return res.status(400).json({ error: 'Name is required' });
 
-    // Enforce uppercase
     name = (name || '').toUpperCase();
     case_no = (case_no || '').toUpperCase();
     sex = (sex || '').toUpperCase();
     address = (address || '').toUpperCase();
     referred_by = (referred_by || '').toUpperCase();
-    
+
     try {
-        const info = db.prepare(`
-      INSERT INTO patients (case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(case_no, name, age || null, sex, address, phone, referred_by, referrer_phone, created_date || getTodayFormatted());
-        res.json({ id: info.lastInsertRowid, message: 'Patient registered successfully' });
+        const patient = await prisma.patient.create({
+            data: {
+                case_no,
+                name,
+                age: age ? parseInt(age) : null,
+                sex,
+                address,
+                phone,
+                referred_by,
+                referrer_phone,
+                created_date: created_date || getTodayFormatted()
+            }
+        });
+        res.json({ id: patient.id, message: 'Patient registered successfully' });
     } catch (err) {
-        if (err.message.includes('UNIQUE')) {
+        if (err.code === 'P2002') {
             return res.status(400).json({ error: 'Case number already exists' });
         }
         res.status(500).json({ error: err.message });
@@ -168,10 +288,10 @@ app.post('/api/patients', (req, res) => {
 });
 
 // PUT update patient
-app.put('/api/patients/:id', (req, res) => {
+app.put('/api/patients/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
     let { case_no, name, age, sex, address, phone, referred_by, referrer_phone, created_date } = req.body;
-    
-    // Enforce uppercase
+
     name = (name || '').toUpperCase();
     case_no = (case_no || '').toUpperCase();
     sex = (sex || '').toUpperCase();
@@ -179,13 +299,23 @@ app.put('/api/patients/:id', (req, res) => {
     referred_by = (referred_by || '').toUpperCase();
 
     try {
-        db.prepare(`
-      UPDATE patients SET case_no=?, name=?, age=?, sex=?, address=?, phone=?, referred_by=?, referrer_phone=?, created_date=?
-      WHERE id=?
-    `).run(case_no, name, age || null, sex, address, phone, referred_by, referrer_phone, created_date, req.params.id);
+        await prisma.patient.update({
+            where: { id },
+            data: {
+                case_no,
+                name,
+                age: age ? parseInt(age) : null,
+                sex,
+                address,
+                phone,
+                referred_by,
+                referrer_phone,
+                created_date
+            }
+        });
         res.json({ message: 'Patient updated successfully' });
     } catch (err) {
-        if (err.message.includes('UNIQUE')) {
+        if (err.code === 'P2002') {
             return res.status(400).json({ error: 'Case number already exists' });
         }
         res.status(500).json({ error: err.message });
@@ -193,11 +323,14 @@ app.put('/api/patients/:id', (req, res) => {
 });
 
 // DELETE patient
-app.delete('/api/patients/:id', (req, res) => {
-    db.prepare('DELETE FROM visits WHERE patient_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM treatments WHERE patient_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM patients WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Patient deleted' });
+app.delete('/api/patients/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        await prisma.patient.delete({ where: { id } });
+        res.json({ message: 'Patient deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -205,79 +338,87 @@ app.delete('/api/patients/:id', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 
 // GET treatments for a patient (optional; profile already includes these)
-app.get('/api/patients/:id/treatments', (req, res) => {
-    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(req.params.id);
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const treatments = db.prepare('SELECT * FROM treatments WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const allVisits = db.prepare('SELECT * FROM visits WHERE patient_id = ? ORDER BY id DESC').all(req.params.id);
-    const withSittings = treatments.map(t => ({
-        ...t,
-        sittings: allVisits.filter(v => v.treatment_id === t.id)
-    }));
-    res.json(withSittings);
+app.get('/api/patients/:id/treatments', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const treatments = await prisma.treatment.findMany({
+            where: { patient_id: id },
+            include: { visits: { orderBy: { id: 'desc' } } },
+            orderBy: { id: 'desc' }
+        });
+        const formatted = treatments.map(t => ({ ...t, sittings: t.visits }));
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST create treatment
-app.post('/api/treatments', (req, res) => {
+app.post('/api/treatments', async (req, res) => {
     let { patient_id, name, description, created_date } = req.body;
     const pid = patient_id != null ? parseInt(patient_id, 10) : NaN;
     if (!name || (typeof name === 'string' && !name.trim())) return res.status(400).json({ error: 'Treatment name is required' });
     if (!pid || isNaN(pid)) return res.status(400).json({ error: 'Patient ID is required' });
-    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(pid);
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-    // Enforce uppercase
     name = (name || '').toUpperCase();
     description = (description || '').toUpperCase();
 
-    const info = db.prepare(`
-    INSERT INTO treatments (patient_id, name, description, created_date)
-    VALUES (?, ?, ?, ?)
-  `).run(pid, (name && name.trim()) || name, description || null, (created_date && created_date.trim()) || getTodayFormatted());
-    res.json({ id: info.lastInsertRowid, message: 'Treatment created', sittings: [] });
+    try {
+        const treatment = await prisma.treatment.create({
+            data: {
+                patient_id: pid,
+                name: (name && name.trim()) || name,
+                description: description || null,
+                created_date: (created_date && created_date.trim()) || getTodayFormatted()
+            }
+        });
+        res.json({ id: treatment.id, message: 'Treatment created', sittings: [] });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // GET treatment report as PDF (patient + treatment + seatings) – must be before /:id
-app.get('/api/treatments/:id/pdf', (req, res) => {
-    const treatmentId = req.params.id;
-    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(treatmentId);
-    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
-    const patient = db.prepare('SELECT * FROM patients WHERE id = ?').get(treatment.patient_id);
-    if (!patient) return res.status(404).json({ error: 'Patient not found' });
-    const sittings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY visit_date, id').all(treatmentId);
-
-    const safe = (s) => (s == null || s === '' ? '-' : String(s).toUpperCase());
-    const safeFilename = (s) => (s || 'REPORT').toUpperCase().replace(/[^A-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
-    const colCharLimits = [8, 6, 14, 11, 8, 10, 11];
-    const truncate = (str, maxChars) => { const s = String(str || '-').toUpperCase(); return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..'; };
-    const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_REPORT.pdf`;
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-    const doc = new PDFDocument({ margin: 40, bufferPages: false });
-    doc.on('error', (err) => { console.error('PDF error:', err); });
-    doc.pipe(res);
-
+app.get('/api/treatments/:id/pdf', async (req, res) => {
     try {
+        const treatmentId = parseInt(req.params.id);
+        const treatment = await prisma.treatment.findUnique({
+            where: { id: treatmentId },
+            include: { patient: true, visits: { orderBy: { id: 'asc' } } }
+        });
+
+        if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+        const patient = treatment.patient;
+        const sittings = treatment.visits;
+
+        const safe = (s) => (s == null || s === '' ? '-' : String(s).toUpperCase());
+        const safeFilename = (s) => (s || 'REPORT').toUpperCase().replace(/[^A-Z0-9._-]/g, '_').replace(/_+/g, '_').slice(0, 80);
+        const colCharLimits = [8, 6, 14, 11, 8, 10, 11];
+        const truncate = (str, maxChars) => { const s = String(str || '-').toUpperCase(); return s.length <= maxChars ? s : s.slice(0, maxChars - 2) + '..'; };
+        const filename = `${safeFilename(patient.name)}_${safeFilename(treatment.name)}_REPORT.pdf`;
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+        const doc = new PDFDocument({ margin: 40, bufferPages: false });
+        doc.on('error', (err) => { console.error('PDF error:', err); });
+        doc.pipe(res);
+
         const margin = 40;
         const pageWidth = doc.page.width - margin * 2;
         let y = margin;
 
-        // Simple Header
         doc.font('Helvetica-Bold').fontSize(18).fillColor('#000000').text("VIMISHA'S DENTAL CLINIC", margin, y, { align: 'center' });
         y += 22;
         doc.fontSize(10).font('Helvetica').text('TREATMENT CASE RECORD', margin, y, { align: 'center' });
         y += 20;
 
-        // Thin separator line
         doc.moveTo(margin, y).lineTo(margin + pageWidth, y).strokeColor('#000000').lineWidth(1).stroke();
         y += 15;
 
-        // Patient Details Section (2 columns)
         doc.fontSize(10).font('Helvetica-Bold').text('PATIENT INFORMATION', margin, y);
         y += 15;
-        
+
         const col1X = margin;
         const col2X = margin + (pageWidth / 2);
         let sectionY = y;
@@ -310,7 +451,6 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
 
         y = Math.max(sectionY, sectionY2) + 20;
 
-        // Treatment Header
         doc.font('Helvetica-Bold').fontSize(11).text('TREATMENT:', margin, y, { continued: true });
         doc.font('Helvetica').text(` ${safe(treatment.name)}`);
         y += 14;
@@ -321,15 +461,13 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
         }
         y += 15;
 
-        // Sittings Table
         doc.font('Helvetica-Bold').fontSize(11).text('SITTINGS / VISIT RECORDS', margin, y);
         y += 15;
 
         const headers = ['DATE', 'TIME', 'WORK DONE', 'FINDINGS', 'PAYMENT', 'NEXT APPT', 'NOTES'];
-        const colWidths = [50, 40, 95, 80, 55, 65, 130]; // Adjusted for a cleaner look
+        const colWidths = [50, 40, 95, 80, 55, 65, 130];
         const rowHeight = 20;
 
-        // Table Header
         doc.rect(margin, y, pageWidth, rowHeight).stroke();
         let currentX = margin;
         doc.fontSize(8);
@@ -339,7 +477,6 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
         });
         y += rowHeight;
 
-        // Table Rows
         sittings.forEach((s, idx) => {
             if (y > doc.page.height - 60) {
                 doc.addPage();
@@ -359,7 +496,6 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
             y += rowHeight;
         });
 
-        // Footer
         const footerY = doc.page.height - 40;
         doc.fontSize(8).fillColor('#666666');
         doc.text(`PRINTED ON: ${new Date().toLocaleString('en-IN').toUpperCase()}`, margin, footerY);
@@ -372,34 +508,47 @@ app.get('/api/treatments/:id/pdf', (req, res) => {
 });
 
 // GET single treatment with seatings
-app.get('/api/treatments/:id', (req, res) => {
-    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
-    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
-    const sittings = db.prepare('SELECT * FROM visits WHERE treatment_id = ? ORDER BY id DESC').all(req.params.id);
-    res.json({ ...treatment, sittings });
+app.get('/api/treatments/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const treatment = await prisma.treatment.findUnique({
+            where: { id },
+            include: { visits: { orderBy: { id: 'desc' } } }
+        });
+        if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+        res.json({ ...treatment, sittings: treatment.visits });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // PUT update treatment
-app.put('/api/treatments/:id', (req, res) => {
-    let { name, description } = req.body;
-    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
-    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+app.put('/api/treatments/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        let { name, description } = req.body;
+        name = name ? name.toUpperCase() : name;
+        description = description ? description.toUpperCase() : description;
 
-    // Enforce uppercase
-    name = name ? name.toUpperCase() : name;
-    description = description ? description.toUpperCase() : description;
-
-    db.prepare('UPDATE treatments SET name = ?, description = ? WHERE id = ?').run(name ?? treatment.name, description !== undefined ? description : treatment.description, req.params.id);
-    res.json({ message: 'Treatment updated' });
+        await prisma.treatment.update({
+            where: { id },
+            data: { name, description }
+        });
+        res.json({ message: 'Treatment updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// DELETE treatment (visits under it are deleted by app or cascade)
-app.delete('/api/treatments/:id', (req, res) => {
-    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(req.params.id);
-    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
-    db.prepare('DELETE FROM visits WHERE treatment_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM treatments WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Treatment deleted' });
+// DELETE treatment (visits under it are deleted by cascade)
+app.delete('/api/treatments/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        await prisma.treatment.delete({ where: { id } });
+        res.json({ message: 'Treatment deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -407,178 +556,239 @@ app.delete('/api/treatments/:id', (req, res) => {
 // ════════════════════════════════════════════════════════════════
 
 // GET today's appointments
-app.get('/api/visits/today', (req, res) => {
+app.get('/api/visits/today', async (req, res) => {
     const today = getTodayFormatted();
-    const rows = db.prepare(`
-    SELECT v.*, p.name AS patient_name, p.case_no
-    FROM visits v
-    JOIN patients p ON p.id = v.patient_id
-    WHERE v.visit_date = ? OR v.next_appointment_date = ?
-    ORDER BY v.visit_time
-  `).all(today, today);
-    res.json(rows);
+    try {
+        const rows = await prisma.visit.findMany({
+            where: {
+                OR: [
+                    { visit_date: today },
+                    { next_appointment_date: today }
+                ]
+            },
+            include: { patient: true },
+            orderBy: { visit_time: 'asc' }
+        });
+        const formatted = rows.map(r => ({ ...r, patient_name: r.patient.name, case_no: r.patient.case_no }));
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // GET upcoming appointments
-app.get('/api/visits/upcoming', (req, res) => {
-    const rows = db.prepare(`
-    SELECT v.*, p.name AS patient_name, p.case_no
-    FROM visits v
-    JOIN patients p ON p.id = v.patient_id
-    WHERE v.next_appointment_date IS NOT NULL AND v.next_appointment_date != ''
-    ORDER BY v.id DESC
-  `).all();
-    res.json(rows);
+app.get('/api/visits/upcoming', async (req, res) => {
+    try {
+        const rows = await prisma.visit.findMany({
+            where: {
+                AND: [
+                    { next_appointment_date: { not: null } },
+                    { next_appointment_date: { not: '' } }
+                ]
+            },
+            include: { patient: true },
+            orderBy: { id: 'desc' }
+        });
+        const formatted = rows.map(r => ({ ...r, patient_name: r.patient.name, case_no: r.patient.case_no }));
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // POST create visit (seating) – requires treatment_id
-app.post('/api/visits', (req, res) => {
+app.post('/api/visits', async (req, res) => {
     let { treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
     if (!treatment_id) return res.status(400).json({ error: 'Treatment ID is required' });
-    const treatment = db.prepare('SELECT * FROM treatments WHERE id = ?').get(treatment_id);
-    if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
-    const patient_id = treatment.patient_id;
 
-    // Enforce uppercase
-    work_done = (work_done || '').toUpperCase();
-    findings = (findings || '').toUpperCase();
-    notes = (notes || '').toUpperCase();
+    try {
+        const tid = parseInt(treatment_id);
+        const treatment = await prisma.treatment.findUnique({ where: { id: tid } });
+        if (!treatment) return res.status(404).json({ error: 'Treatment not found' });
+        const patient_id = treatment.patient_id;
 
-    const info = db.prepare(`
-    INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(patient_id, treatment_id, visit_date || getTodayFormatted(), visit_time, work_done, findings, payment || 0, next_appointment_date, next_appointment_time, notes);
-    res.json({ id: info.lastInsertRowid, message: 'Sitting recorded successfully' });
+        work_done = (work_done || '').toUpperCase();
+        findings = (findings || '').toUpperCase();
+        notes = (notes || '').toUpperCase();
+
+        const visit = await prisma.visit.create({
+            data: {
+                patient_id,
+                treatment_id: tid,
+                visit_date: visit_date || getTodayFormatted(),
+                visit_time,
+                work_done,
+                findings,
+                payment: payment ? parseInt(payment) : 0,
+                next_appointment_date,
+                next_appointment_time,
+                notes
+            }
+        });
+        res.json({ id: visit.id, message: 'Sitting recorded successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // PUT update visit (seating)
-app.put('/api/visits/:id', (req, res) => {
+app.put('/api/visits/:id', async (req, res) => {
+    const id = parseInt(req.params.id);
     let { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
-    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
-    if (!visit) return res.status(404).json({ error: 'Visit not found' });
 
-    // Enforce uppercase
-    work_done = work_done !== undefined ? work_done.toUpperCase() : undefined;
-    findings = findings !== undefined ? findings.toUpperCase() : undefined;
-    notes = notes !== undefined ? notes.toUpperCase() : undefined;
+    try {
+        const visit = await prisma.visit.findUnique({ where: { id } });
+        if (!visit) return res.status(404).json({ error: 'Visit not found' });
 
-    db.prepare(`
-    UPDATE visits SET visit_date = ?, visit_time = ?, work_done = ?, findings = ?, payment = ?, next_appointment_date = ?, next_appointment_time = ?, notes = ?
-    WHERE id = ?
-  `).run(
-        visit_date !== undefined ? visit_date : visit.visit_date,
-        visit_time !== undefined ? visit_time : visit.visit_time,
-        work_done !== undefined ? work_done : visit.work_done,
-        findings !== undefined ? findings : visit.findings,
-        payment !== undefined ? (parseInt(payment, 10) || 0) : visit.payment,
-        next_appointment_date !== undefined ? next_appointment_date : visit.next_appointment_date,
-        next_appointment_time !== undefined ? next_appointment_time : visit.next_appointment_time,
-        notes !== undefined ? notes : visit.notes,
-        req.params.id
-    );
-    res.json({ message: 'Visit updated' });
+        work_done = work_done !== undefined ? work_done.toUpperCase() : undefined;
+        findings = findings !== undefined ? findings.toUpperCase() : undefined;
+        notes = notes !== undefined ? notes.toUpperCase() : undefined;
+
+        await prisma.visit.update({
+            where: { id },
+            data: {
+                visit_date: visit_date !== undefined ? visit_date : visit.visit_date,
+                visit_time: visit_time !== undefined ? visit_time : visit.visit_time,
+                work_done: work_done !== undefined ? work_done : visit.work_done,
+                findings: findings !== undefined ? findings : visit.findings,
+                payment: payment !== undefined ? (parseInt(payment, 10) || 0) : visit.payment,
+                next_appointment_date: next_appointment_date !== undefined ? next_appointment_date : visit.next_appointment_date,
+                next_appointment_time: next_appointment_time !== undefined ? next_appointment_time : visit.next_appointment_time,
+                notes: notes !== undefined ? notes : visit.notes
+            }
+        });
+        res.json({ message: 'Visit updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // DELETE visit (seating)
-app.delete('/api/visits/:id', (req, res) => {
-    const visit = db.prepare('SELECT * FROM visits WHERE id = ?').get(req.params.id);
-    if (!visit) return res.status(404).json({ error: 'Visit not found' });
-    db.prepare('DELETE FROM visits WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Visit deleted' });
+app.delete('/api/visits/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        await prisma.visit.delete({ where: { id } });
+        res.json({ message: 'Visit deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════
 //  PAYMENTS
 // ════════════════════════════════════════════════════════════════
 
-app.get('/api/payments', (req, res) => {
-    const rows = db.prepare(`
-    SELECT v.id, v.patient_id, v.visit_date, v.payment, v.work_done, p.name AS patient_name, p.case_no
-    FROM visits v
-    JOIN patients p ON p.id = v.patient_id
-    WHERE v.payment > 0
-    ORDER BY v.id DESC
-  `).all();
-    res.json(rows);
+app.get('/api/payments', async (req, res) => {
+    try {
+        const rows = await prisma.visit.findMany({
+            where: { payment: { gt: 0 } },
+            include: { patient: true },
+            orderBy: { id: 'desc' }
+        });
+        const formatted = rows.map(r => ({
+            id: r.id,
+            patient_id: r.patient_id,
+            visit_date: r.visit_date,
+            payment: r.payment,
+            work_done: r.work_done,
+            patient_name: r.patient.name,
+            case_no: r.patient.case_no
+        }));
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════
 //  STATS (for dashboard)
 // ════════════════════════════════════════════════════════════════
 
-app.get('/api/stats', (req, res) => {
-    const totalPatients = db.prepare('SELECT COUNT(*) AS c FROM patients').get().c;
-    const totalVisits = db.prepare('SELECT COUNT(*) AS c FROM visits').get().c;
-    const totalRevenue = db.prepare('SELECT COALESCE(SUM(payment),0) AS s FROM visits').get().s;
-    const totalOldRecords = db.prepare('SELECT COUNT(*) AS c FROM old_records').get().c;
-    const recentPatients = db.prepare('SELECT * FROM patients ORDER BY id DESC LIMIT 5').all();
+app.get('/api/stats', async (req, res) => {
+    try {
+        const totalPatients = await prisma.patient.count();
+        const totalVisits = await prisma.visit.count();
+        const totalRevenueResult = await prisma.visit.aggregate({
+            _sum: { payment: true }
+        });
+        const totalRevenue = totalRevenueResult._sum.payment || 0;
+        const totalOldRecords = await prisma.oldRecord.count();
+        const recentPatients = await prisma.patient.findMany({
+            orderBy: { id: 'desc' },
+            take: 5
+        });
 
-    const today = getTodayFormatted();
-    const todayAppointments = db.prepare(`
-    SELECT v.*, p.name AS patient_name, p.case_no
-    FROM visits v
-    JOIN patients p ON p.id = v.patient_id
-    WHERE v.visit_date = ? OR v.next_appointment_date = ?
-    ORDER BY v.visit_time
-  `).all(today, today);
+        const today = getTodayFormatted();
+        const todayAppointmentsRows = await prisma.visit.findMany({
+            where: {
+                OR: [
+                    { visit_date: today },
+                    { next_appointment_date: today }
+                ]
+            },
+            include: { patient: true },
+            orderBy: { visit_time: 'asc' }
+        });
+        const todayAppointments = todayAppointmentsRows.map(r => ({
+            ...r,
+            patient_name: r.patient.name,
+            case_no: r.patient.case_no
+        }));
 
-    res.json({ totalPatients, totalVisits, totalRevenue, totalOldRecords, recentPatients, todayAppointments });
+        res.json({ totalPatients, totalVisits, totalRevenue, totalOldRecords, recentPatients, todayAppointments });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════
 //  OLD RECORDS
 // ════════════════════════════════════════════════════════════════
 
-// POST upload old record(s) – multer errors handled by error middleware below
+// POST upload old record(s)
 app.post('/api/old-records/upload', (req, res, next) => {
     upload.array('photos', 10)(req, res, (err) => {
         if (err) return next(err);
         next();
     });
-}, (req, res, next) => {
+}, async (req, res, next) => {
     try {
         const { patient_id, patient_name_manual, case_no, record_date, description } = req.body || {};
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'At least one photo is required' });
         }
 
-        const insertRecord = db.prepare(`
-      INSERT INTO old_records (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
         const uploadDate = getTodayFormatted();
         const ids = [];
         let newPatientId = null;
 
-        const insertAll = db.transaction(() => {
-            let linkedPatientId = patient_id ? parseInt(patient_id, 10) : null;
+        let linkedPatientId = patient_id ? parseInt(patient_id, 10) : null;
 
-            // If manual name provided and no existing patient linked, create a new patient
-            if (!linkedPatientId && patient_name_manual) {
-                const patientInfo = db.prepare(`
-                    INSERT INTO patients (name, created_date) VALUES (?, ?)
-                `).run(patient_name_manual, uploadDate);
-                linkedPatientId = patientInfo.lastInsertRowid;
-                newPatientId = linkedPatientId;
-            }
+        // If manual name provided and no existing patient linked, create a new patient
+        if (!linkedPatientId && patient_name_manual) {
+            const patient = await prisma.patient.create({
+                data: { name: patient_name_manual, created_date: uploadDate }
+            });
+            linkedPatientId = patient.id;
+            newPatientId = linkedPatientId;
+        }
 
-            for (const file of req.files) {
-                const filePath = '/uploads/old_records/' + file.filename;
-                const info = insertRecord.run(
-                    linkedPatientId,
-                    patient_name_manual || null,
-                    case_no || null,
-                    record_date || '',
-                    uploadDate,
-                    description || '',
-                    filePath
-                );
-                ids.push(info.lastInsertRowid);
-            }
-        });
+        for (const file of req.files) {
+            const filePath = '/uploads/old_records/' + file.filename;
+            const record = await prisma.oldRecord.create({
+                data: {
+                    patient_id: linkedPatientId,
+                    patient_name_manual: patient_name_manual || null,
+                    case_no: case_no || null,
+                    record_date: record_date || '',
+                    upload_date: uploadDate,
+                    description: description || '',
+                    file_path: filePath
+                }
+            });
+            ids.push(record.id);
+        }
 
-        insertAll();
         res.json({ ids, newPatientId, message: `${req.files.length} record(s) uploaded successfully` });
     } catch (err) {
         next(err);
@@ -586,60 +796,71 @@ app.post('/api/old-records/upload', (req, res, next) => {
 });
 
 // GET all old records (with search support)
-app.get('/api/old-records', (req, res) => {
+app.get('/api/old-records', async (req, res) => {
     const search = req.query.search || '';
-    let rows;
-    if (search) {
-        const pattern = `%${search}%`;
-        const prefix = `${search}%`;
-        rows = db.prepare(`
-      SELECT r.*, p.name AS linked_patient_name, p.case_no
-      FROM old_records r
-      LEFT JOIN patients p ON p.id = r.patient_id
-      WHERE p.name LIKE @q OR r.patient_name_manual LIKE @q OR r.description LIKE @q
-      ORDER BY
-        CASE
-          WHEN p.name LIKE @prefix THEN 1
-          WHEN r.patient_name_manual LIKE @prefix THEN 2
-          WHEN p.name LIKE @q THEN 3
-          WHEN r.patient_name_manual LIKE @q THEN 4
-          ELSE 5
-        END,
-        r.id DESC
-    `).all({ q: pattern, prefix: prefix });
-    } else {
-        rows = db.prepare(`
-      SELECT r.*, p.name AS linked_patient_name, p.case_no
-      FROM old_records r
-      LEFT JOIN patients p ON p.id = r.patient_id
-      ORDER BY r.id DESC
-    `).all();
+    try {
+        let records;
+        if (search) {
+            records = await prisma.oldRecord.findMany({
+                where: {
+                    OR: [
+                        { patient_name_manual: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } },
+                        { patient: { name: { contains: search, mode: 'insensitive' } } }
+                    ]
+                },
+                include: { patient: true },
+                orderBy: { id: 'desc' }
+            });
+        } else {
+            records = await prisma.oldRecord.findMany({
+                include: { patient: true },
+                orderBy: { id: 'desc' }
+            });
+        }
+        const formatted = records.map(r => ({
+            ...r,
+            linked_patient_name: r.patient ? r.patient.name : null,
+            case_no: r.patient ? r.patient.case_no : r.case_no
+        }));
+        res.json(formatted);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-    res.json(rows);
 });
 
 // GET old records for a specific patient
-app.get('/api/old-records/:patientId', (req, res) => {
-    const rows = db.prepare(`
-    SELECT * FROM old_records WHERE patient_id = ? ORDER BY id DESC
-  `).all(req.params.patientId);
-    res.json(rows);
+app.get('/api/old-records/:patientId', async (req, res) => {
+    try {
+        const patientId = parseInt(req.params.patientId);
+        const rows = await prisma.oldRecord.findMany({
+            where: { patient_id: patientId },
+            orderBy: { id: 'desc' }
+        });
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // DELETE an old record
-app.delete('/api/old-records/:id', (req, res) => {
-    const record = db.prepare('SELECT * FROM old_records WHERE id = ?').get(req.params.id);
-    if (!record) return res.status(404).json({ error: 'Record not found' });
+app.delete('/api/old-records/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const record = await prisma.oldRecord.findUnique({ where: { id } });
+        if (!record) return res.status(404).json({ error: 'Record not found' });
 
-    // Delete the file from disk (file_path is stored as /uploads/old_records/filename)
-    const filename = record.file_path ? path.basename(record.file_path) : '';
-    const fullPath = filename ? path.join(uploadsDir, filename) : null;
-    if (fullPath && fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
+        const filename = record.file_path ? path.basename(record.file_path) : '';
+        const fullPath = filename ? path.join(uploadsDir, filename) : null;
+        if (fullPath && fs.existsSync(fullPath)) {
+            fs.unlinkSync(fullPath);
+        }
+
+        await prisma.oldRecord.delete({ where: { id } });
+        res.json({ message: 'Record deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
-
-    db.prepare('DELETE FROM old_records WHERE id = ?').run(req.params.id);
-    res.json({ message: 'Record deleted' });
 });
 
 // ── Error handler for API (e.g. multer / upload errors) ─────────

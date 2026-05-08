@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Patient {
+  id             Int          @id @default(autoincrement())
+  case_no        String?      @unique
+  name           String
+  age            Int?
+  sex            String?
+  address        String?
+  phone          String?
+  referred_by    String?
+  referrer_phone String?
+  created_date   String?
+  visits         Visit[]
+  old_records    OldRecord[]
+  treatments     Treatment[]
+
+  @@map("patients")
+}
+
+model Treatment {
+  id           Int      @id @default(autoincrement())
+  patient_id   Int
+  name         String
+  description  String?
+  created_date String?
+  patient      Patient  @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  visits       Visit[]
+
+  @@map("treatments")
+}
+
+model Visit {
+  id                    Int        @id @default(autoincrement())
+  patient_id            Int
+  treatment_id          Int?
+  visit_date            String?
+  visit_time            String?
+  work_done             String?
+  findings              String?
+  payment               Int?       @default(0)
+  next_appointment_date String?
+  next_appointment_time String?
+  notes                 String?
+  patient               Patient    @relation(fields: [patient_id], references: [id], onDelete: Cascade)
+  treatment             Treatment? @relation(fields: [treatment_id], references: [id], onDelete: Cascade)
+
+  @@map("visits")
+}
+
+model OldRecord {
+  id                  Int      @id @default(autoincrement())
+  patient_id          Int?
+  patient_name_manual String?
+  case_no             String?
+  record_date         String?
+  upload_date         String?
+  description         String?
+  file_path           String?
+  patient             Patient? @relation(fields: [patient_id], references: [id], onDelete: SetNull)
+
+  @@map("old_records")
+}
+
+model Session {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@map("session")
+}

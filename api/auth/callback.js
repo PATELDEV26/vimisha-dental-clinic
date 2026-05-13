@@ -25,6 +25,8 @@ module.exports = async (req, res) => {
         });
         const user = await userRes.json();
         
+        console.log('Tokens received:', tokens);
+        console.log('User received:', user);
         console.log('Attempting login for email:', user.email);
         console.log('Allowed emails list:', ALLOWED_EMAILS);
 

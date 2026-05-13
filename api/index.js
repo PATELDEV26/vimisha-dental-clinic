@@ -12,10 +12,11 @@ const bridge = (handler, paramName) => (req, res) => {
 };
 
 // Auth
+app.all('/auth/google', bridge(require('./auth/google')));
 app.all('/api/auth/callback', bridge(require('./auth/callback')));
-app.all('/api/auth/google', bridge(require('./auth/google')));
-app.all('/api/auth/logout', bridge(require('./auth/logout')));
+app.all('/auth/logout', bridge(require('./auth/logout')));
 app.all('/api/auth/me', bridge(require('./auth/me')));
+app.all('/api/me', bridge(require('./auth/me')));
 
 // Backup
 app.all('/api/backup/download', bridge(require('./backup/download')));

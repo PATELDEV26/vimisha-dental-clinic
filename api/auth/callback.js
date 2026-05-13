@@ -24,6 +24,9 @@ module.exports = async (req, res) => {
             headers: { Authorization: `Bearer ${tokens.access_token}` },
         });
         const user = await userRes.json();
+        
+        console.log('Attempting login for email:', user.email);
+        console.log('Allowed emails list:', ALLOWED_EMAILS);
 
         if (user.email && ALLOWED_EMAILS.includes(user.email.toLowerCase())) {
             // Set session cookie (Simplified for this task)

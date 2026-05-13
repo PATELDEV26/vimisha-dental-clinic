@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
                 code,
                 client_id: process.env.GOOGLE_CLIENT_ID,
                 client_secret: process.env.GOOGLE_CLIENT_SECRET,
-                redirect_uri: `${process.env.BASE_URL}/api/auth/callback`,
+                redirect_uri: `${process.env.BASE_URL}/auth/google/callback`,
                 grant_type: 'authorization_code',
             }).toString(),
         });

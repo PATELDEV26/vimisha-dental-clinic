@@ -1326,18 +1326,23 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     img.crossOrigin = "Anonymous";
     img.src = imageSrc;
     
+    let imageLoaded = true;
     // We must await image load
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
+    await new Promise((resolve) => {
+      img.onload = () => { resolve(); };
+      img.onerror = () => {
+        console.warn('Image failed to load:', imageSrc);
+        imageLoaded = false;
+        resolve();
+      };
     });
 
     // Calculate dimensions to fit on page
     const maxWidth = pageWidth - (margin * 2);
     const maxHeight = pageHeight - currentY - margin;
     
-    let imgWidth = img.width;
-    let imgHeight = img.height;
+    let imgWidth = imageLoaded ? img.width : 400;
+    let imgHeight = imageLoaded ? img.height : 300;
     
     // Scale image
     const widthRatio = maxWidth / imgWidth;
@@ -1354,8 +1359,17 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     doc.setDrawColor(156, 213, 255); // #9CD5FF
     doc.rect(margin - 1, currentY - 1, imgWidth + 2, imgHeight + 2);
     
-    // Add image
-    doc.addImage(img, 'AUTO', margin, currentY, imgWidth, imgHeight);
+    if (imageLoaded) {
+      // Add image
+      doc.addImage(img, 'AUTO', margin, currentY, imgWidth, imgHeight);
+    } else {
+      // Draw placeholder text
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, currentY, imgWidth, imgHeight, 'F');
+      doc.setTextColor(150, 150, 150);
+      doc.setFont("helvetica", "bold");
+      doc.text("Photo Not Available", margin + imgWidth/2, currentY + imgHeight/2, { align: "center" });
+    }
 
     // Footer
     doc.setFontSize(9);

@@ -1355,7 +1355,7 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     doc.rect(margin - 1, currentY - 1, imgWidth + 2, imgHeight + 2);
     
     // Add image
-    doc.addImage(img, 'JPEG', margin, currentY, imgWidth, imgHeight);
+    doc.addImage(img, 'AUTO', margin, currentY, imgWidth, imgHeight);
 
     // Footer
     doc.setFontSize(9);

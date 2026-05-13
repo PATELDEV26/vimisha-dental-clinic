@@ -63,6 +63,32 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+// ── Backup Download (SQLite) ───────────────────────────────────
+app.get('/api/backup/download', ensureAuthenticated, (req, res) => {
+    try {
+        const dbPath = path.join(__dirname, 'clinic.db');
+        
+        // Checkpoint WAL before download
+        const Database = require('better-sqlite3');
+        const db = new Database(dbPath);
+        db.pragma('wal_checkpoint(TRUNCATE)');
+        db.close();
+        
+        const date = new Date().toISOString().split('T')[0];
+        const filename = `vimisha-dental-backup-${date}.db`;
+        
+        res.download(dbPath, filename, (err) => {
+          if (err) {
+            console.error('Download error:', err);
+            if (!res.headersSent) res.status(500).json({ error: 'Backup failed' });
+          }
+        });
+    } catch (err) {
+        console.error('Backup error:', err);
+        res.status(500).json({ error: 'Backup process failed' });
+    }
+});
+
 // ── Multer storage config ──────────────────────────────────────
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadsDir),

@@ -135,6 +135,29 @@ function setupKeyboardNav(inputEl, resultsEl) {
 }
 
 
+async function downloadBackup() {
+  try {
+    const response = await fetch('/api/backup/download');
+    if (!response.ok) throw new Error('Backup failed');
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const date = new Date().toISOString().split('T')[0];
+    a.download = `vimisha-dental-backup-${date}.db`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    flash('Backup downloaded successfully!');
+  } catch (error) {
+    flash('Backup failed. Please try again.', 'error');
+  }
+}
+
+
 // ── Init ───────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Live date

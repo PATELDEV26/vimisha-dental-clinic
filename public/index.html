@@ -128,7 +128,22 @@
           </div>
         </div>
         <div class="stats-grid" id="statsGrid"></div>
-        <div class="mb-16 flex-end">
+        <div class="mb-16 flex-end" style="gap: 12px;">
+          <button onclick="downloadBackup()" style="
+            background: #2ECC71;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 10px 20px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Nunito', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          ">
+            💾 Download Backup
+          </button>
           <button class="btn btn-accent btn-lg" id="dashUploadOldRecordBtn">
             Upload Old Record
           </button>

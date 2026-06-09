@@ -26,6 +26,7 @@ app.all('/api/dashboard', bridge(require('./dashboard')));
 
 // Old Records
 app.all('/api/old-records', bridge(require('./old-records/index')));
+app.all('/api/old-records/upload', bridge(require('./old-records/index')));
 app.all('/api/old-records/:id', bridge(require('./old-records/[id]'), 'id'));
 
 // Patients

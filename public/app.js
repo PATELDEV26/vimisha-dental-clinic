@@ -531,8 +531,7 @@ function renderTreatmentsContent(patientId) {
     container.innerHTML = `
       <div class="empty-state treatments-empty">
         <span class="empty-icon">🦷</span>
-        <p>No treatments yet. Add a treatment to start recording sittings.</p>
-        <p class="treatments-empty-hint">Workflow: Create a treatment → View it → Add sittings.</p>
+        <p>No treatments yet. Add a treatment.</p>
         <button type="button" class="btn btn-primary btn-lg" id="emptyStateAddTreatmentBtn">➕ Add your first treatment</button>
       </div>
     `;
@@ -554,7 +553,6 @@ function renderTreatmentsContent(patientId) {
           <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
         </div>
         <div class="treatment-actions">
-          <button type="button" class="btn btn-primary btn-sm" data-action="view-treatment" data-treatment-id="${t.id}">👁️ View sittings</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit</button>
           <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete</button>

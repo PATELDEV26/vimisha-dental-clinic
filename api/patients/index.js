@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
                     WHERE name ILIKE ${searchPattern} 
                        OR case_no ILIKE ${searchPattern} 
                        OR phone ILIKE ${searchPattern}
-                    ORDER BY id DESC
+                    ORDER BY NULLIF(TRIM(case_no), '') ASC NULLS LAST
                     LIMIT 100
                 `;
                 
@@ -37,14 +37,14 @@ module.exports = async (req, res) => {
                       AND (patient_name_manual ILIKE ${searchPattern} 
                            OR case_no ILIKE ${searchPattern} 
                            OR description ILIKE ${searchPattern})
-                    ORDER BY id DESC
+                    ORDER BY NULLIF(TRIM(case_no), '') ASC NULLS LAST
                     LIMIT 100
                 `;
                 return res.json([...patients, ...unlinkedRecords]);
             } else {
                 patients = await sql`
                     SELECT *, 'patient' as type FROM patients 
-                    ORDER BY id DESC 
+                    ORDER BY NULLIF(TRIM(case_no), '') ASC NULLS LAST
                     LIMIT 100
                 `;
                 const unlinkedRecords = await sql`
@@ -55,7 +55,7 @@ module.exports = async (req, res) => {
                            'old_record' as type
                     FROM old_records
                     WHERE patient_id IS NULL
-                    ORDER BY id DESC
+                    ORDER BY NULLIF(TRIM(case_no), '') ASC NULLS LAST
                     LIMIT 100
                 `;
                 return res.json([...patients, ...unlinkedRecords]);

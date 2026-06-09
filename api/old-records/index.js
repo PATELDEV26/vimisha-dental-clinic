@@ -76,9 +76,9 @@ module.exports = async (req, res) => {
 
                 const record = await sql`
                     INSERT INTO old_records 
-                    (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path, file_url)
+                    (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path)
                     VALUES (${linkedPatientId}, ${patient_name_manual}, ${case_no}, ${record_date}, ${uploadDate}, 
-                            ${description}, ${cloudRes.secure_url}, ${cloudRes.secure_url})
+                            ${description}, ${cloudRes.secure_url})
                     RETURNING id
                 `;
                 results.push(record[0]);

@@ -1211,10 +1211,28 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
 
   container.innerHTML = records.map(r => {
     const patientName = r.linked_patient_name || r.patient_name_manual || '—';
+    
+    let filePaths = [];
+    try {
+      if (r.file_path && r.file_path.startsWith('[')) {
+        filePaths = JSON.parse(r.file_path);
+      } else if (r.file_path) {
+        filePaths = [r.file_path];
+      }
+    } catch (e) {
+      filePaths = [r.file_path];
+    }
+    
+    const firstImage = filePaths.length > 0 ? filePaths[0] : '';
+    const moreCount = filePaths.length - 1;
+    const pathsJson = escapeHtml(JSON.stringify(filePaths));
+
     return `
         <div class="or-card">
-            <img class="or-card-img" src="${escapeHtml(r.file_path)}" alt="Record"
-                 onclick="openLightbox('${escapeHtml(r.file_path)}', '${escapeHtml(r.description)}', '${escapeHtml(r.record_date)}', '${escapeHtml(r.upload_date)}')">
+            <div style="position: relative; cursor: pointer;" onclick="openLightbox('${pathsJson}', '${escapeHtml(r.description)}', '${escapeHtml(r.record_date)}', '${escapeHtml(r.upload_date)}')">
+                <img class="or-card-img" src="${escapeHtml(firstImage)}" alt="Record">
+                ${moreCount > 0 ? `<div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.7); color: white; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; pointer-events: none;">+${moreCount} photos</div>` : ''}
+            </div>
             <div class="or-card-body">
                 ${!isProfile ? `<div class="or-card-patient">${escapeHtml(patientName)}</div>` : ''}
                 ${r.case_no ? `<div class="or-card-case" style="color: var(--primary); font-weight: 700; margin-bottom: 4px; font-size: 0.9rem;">Case: ${escapeHtml(r.case_no)}</div>` : ''}
@@ -1224,7 +1242,7 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
                     Uploaded: ${escapeHtml(r.upload_date)}
                 </div>
                 <div class="or-card-actions">
-                    <button class="btn btn-outline btn-sm" onclick="event.preventDefault(); downloadRecordAsPDF('${escapeHtml(patientName)}', '${escapeHtml(r.record_date || '')}', '${escapeHtml(r.description || '')}', '${escapeHtml(r.upload_date)}', '${escapeHtml(r.file_path)}')">⬇ Download PDF</button>
+                    <button class="btn btn-outline btn-sm" onclick="event.preventDefault(); downloadRecordAsPDF('${escapeHtml(patientName)}', '${escapeHtml(r.record_date || '')}', '${escapeHtml(r.description || '')}', '${escapeHtml(r.upload_date)}', '${pathsJson}')">⬇ Download PDF</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteOldRecord(${r.id})">🗑 Delete</button>
                 </div>
             </div>
@@ -1232,19 +1250,75 @@ function renderOldRecordsGrid(records, containerId, isProfile) {
   }).join('');
 }
 
-function openLightbox(src, desc, recordDate, uploadDate) {
-  document.getElementById('lightboxImg').src = src;
-  document.getElementById('lightboxDownload').onclick = (e) => {
-    e.preventDefault();
-    downloadRecordAsPDF('Patient Record', recordDate, desc, uploadDate, src);
-  };
+let currentLightboxImages = [];
+let currentLightboxIndex = 0;
+
+function openLightbox(pathsJson, desc, recordDate, uploadDate) {
+  try {
+    currentLightboxImages = JSON.parse(pathsJson.replace(/&quot;/g, '"'));
+  } catch (e) {
+    currentLightboxImages = [pathsJson];
+  }
+  if (!Array.isArray(currentLightboxImages) || currentLightboxImages.length === 0) return;
+  
+  currentLightboxIndex = 0;
+  
+  const prevBtn = document.getElementById('lightboxPrev');
+  const nextBtn = document.getElementById('lightboxNext');
+  if (prevBtn && nextBtn) {
+    if (currentLightboxImages.length > 1) {
+      prevBtn.style.display = 'block';
+      nextBtn.style.display = 'block';
+    } else {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+    }
+  }
+
+  updateLightboxImage();
+  
   document.getElementById('lightboxInfo').innerHTML = `
         <strong>${escapeHtml(desc) || 'No description'}</strong><br>
         ${recordDate ? 'Original date: ' + escapeHtml(recordDate) + ' · ' : ''}
         Uploaded: ${escapeHtml(uploadDate)}
-    `;
+        <div id="lightboxCounter" style="margin-top: 4px; font-weight: bold; color: #9CD5FF;"></div>
+  `;
+  updateLightboxCounter();
+
+  document.getElementById('lightboxDownload').onclick = (e) => {
+    e.preventDefault();
+    downloadRecordAsPDF('Patient Record', recordDate, desc, uploadDate, currentLightboxImages[currentLightboxIndex]);
+  };
+  
   document.getElementById('lightbox').classList.add('show');
 }
+
+function updateLightboxImage() {
+  if (currentLightboxImages.length === 0) return;
+  document.getElementById('lightboxImg').src = currentLightboxImages[currentLightboxIndex];
+  updateLightboxCounter();
+}
+
+function updateLightboxCounter() {
+  const counter = document.getElementById('lightboxCounter');
+  if (counter && currentLightboxImages.length > 1) {
+    counter.textContent = \`Photo \${currentLightboxIndex + 1} of \${currentLightboxImages.length}\`;
+  } else if (counter) {
+    counter.textContent = '';
+  }
+}
+
+document.getElementById('lightboxNext')?.addEventListener('click', () => {
+  if (currentLightboxImages.length <= 1) return;
+  currentLightboxIndex = (currentLightboxIndex + 1) % currentLightboxImages.length;
+  updateLightboxImage();
+});
+
+document.getElementById('lightboxPrev')?.addEventListener('click', () => {
+  if (currentLightboxImages.length <= 1) return;
+  currentLightboxIndex = (currentLightboxIndex - 1 + currentLightboxImages.length) % currentLightboxImages.length;
+  updateLightboxImage();
+});
 
 async function deleteOldRecord(id) {
   if (!confirm('Delete this record? The photo will be permanently removed.')) return;

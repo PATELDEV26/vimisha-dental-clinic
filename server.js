@@ -800,23 +800,25 @@ app.post('/api/old-records/upload', (req, res, next) => {
             newPatientId = linkedPatientId;
         }
 
+        const filePaths = [];
         for (const file of req.files) {
-            const filePath = '/uploads/old_records/' + file.filename;
-            const record = await prisma.oldRecord.create({
-                data: {
-                    patient_id: linkedPatientId,
-                    patient_name_manual: patient_name_manual || null,
-                    case_no: case_no || null,
-                    record_date: record_date || '',
-                    upload_date: uploadDate,
-                    description: description || '',
-                    file_path: filePath
-                }
-            });
-            ids.push(record.id);
+            filePaths.push('/uploads/old_records/' + file.filename);
         }
 
-        res.json({ ids, newPatientId, message: `${req.files.length} record(s) uploaded successfully` });
+        const record = await prisma.oldRecord.create({
+            data: {
+                patient_id: linkedPatientId,
+                patient_name_manual: patient_name_manual || null,
+                case_no: case_no || null,
+                record_date: record_date || '',
+                upload_date: uploadDate,
+                description: description || '',
+                file_path: JSON.stringify(filePaths)
+            }
+        });
+        ids.push(record.id);
+
+        res.json({ ids, newPatientId, message: `1 record (${req.files.length} photos) uploaded successfully` });
     } catch (err) {
         next(err);
     }

@@ -437,8 +437,9 @@ async function loadProfile(id, options = {}) {
           <span class="profile-detail-value">${escapeHtml(patient.created_date)}</span>
         </div>
       </div>
-      <div class="profile-actions">
-        <button class="btn btn-outline" onclick="openEditPatient(${patient.id})">✏️ Edit Info</button>
+      <div class="profile-actions" style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn btn-outline" style="width: 100%;" onclick="openEditPatient(${patient.id})">✏️ Edit Info</button>
+        <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('profileUploadOldRecordBtn').click()">📷 Upload Photos</button>
       </div>
     `;
 

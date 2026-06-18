@@ -1119,6 +1119,11 @@ function setupOldRecords() {
       formData.append('photos', file);
     }
 
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '⏳ Uploading... Please wait';
+
     try {
       const res = await fetch('/api/old-records/upload', { method: 'POST', body: formData });
       const data = await res.json();
@@ -1133,6 +1138,9 @@ function setupOldRecords() {
       if (activePage && activePage.id === 'page-dashboard') loadDashboard();
     } catch (err) {
       flash(err.message, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = originalText;
     }
   });
 

@@ -1302,7 +1302,7 @@ function updateLightboxImage() {
 function updateLightboxCounter() {
   const counter = document.getElementById('lightboxCounter');
   if (counter && currentLightboxImages.length > 1) {
-    counter.textContent = \`Photo \${currentLightboxIndex + 1} of \${currentLightboxImages.length}\`;
+    counter.textContent = `Photo ${currentLightboxIndex + 1} of ${currentLightboxImages.length}`;
   } else if (counter) {
     counter.textContent = '';
   }

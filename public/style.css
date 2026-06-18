@@ -18,6 +18,11 @@ input, textarea, select {
   text-transform: uppercase;
 }
 
+/* Safari iOS throws "The string did not match the expected pattern" if date inputs are uppercase */
+input[type="date"] {
+  text-transform: none !important;
+}
+
 :root {
   /* Color Palette */
   --primary: #0B6E6E;

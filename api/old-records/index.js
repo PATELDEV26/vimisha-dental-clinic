@@ -66,6 +66,7 @@ module.exports = async (req, res) => {
                 linkedPatientId = newPatient[0].id;
             }
 
+            const filePaths = [];
             for (const file of req.files) {
                 const b64 = Buffer.from(file.buffer).toString('base64');
                 const dataURI = `data:${file.mimetype};base64,${b64}`;
@@ -73,19 +74,20 @@ module.exports = async (req, res) => {
                 const cloudRes = await cloudinary.uploader.upload(dataURI, {
                     folder: 'vimisha-dental/old-records'
                 });
-
-                const record = await sql`
-                    INSERT INTO old_records 
-                    (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path)
-                    VALUES (${linkedPatientId}, ${patient_name_manual}, ${case_no}, ${record_date}, ${uploadDate}, 
-                            ${description}, ${cloudRes.secure_url})
-                    RETURNING id
-                `;
-                results.push(record[0]);
+                filePaths.push(cloudRes.secure_url);
             }
 
+            const record = await sql`
+                INSERT INTO old_records 
+                (patient_id, patient_name_manual, case_no, record_date, upload_date, description, file_path)
+                VALUES (${linkedPatientId}, ${patient_name_manual}, ${case_no}, ${record_date}, ${uploadDate}, 
+                        ${description}, ${JSON.stringify(filePaths)})
+                RETURNING id
+            `;
+            results.push(record[0]);
+
             return res.json({ 
-                message: `${req.files.length} record(s) uploaded successfully`,
+                message: `1 record (${req.files.length} photos) uploaded successfully`,
                 ids: results.map(r => r.id),
                 patient_id: linkedPatientId
             });

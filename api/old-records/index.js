@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'POST') {
         try {
-            await runMiddleware(req, res, upload.array('photos', 10));
+            await runMiddleware(req, res, upload.array('photos', 50));
 
             const { patient_id, patient_name_manual, case_no, record_date, description } = req.body || {};
             if (!req.files || req.files.length === 0) {

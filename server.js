@@ -101,7 +101,8 @@ const storage = multer.diskStorage({
                 .replace(/_+/g, '_')
                 .slice(0, 30) || 'record';
             const ext = (path.extname(file.originalname) || '.jpg').toLowerCase();
-            cb(null, `${name}_${Date.now()}${ext}`);
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            cb(null, `${name}_${uniqueSuffix}${ext}`);
         } catch (e) {
             cb(e);
         }
@@ -773,7 +774,7 @@ app.get('/api/stats', async (req, res) => {
 
 // POST upload old record(s)
 app.post('/api/old-records/upload', (req, res, next) => {
-    upload.array('photos', 10)(req, res, (err) => {
+    upload.array('photos', 50)(req, res, (err) => {
         if (err) return next(err);
         next();
     });

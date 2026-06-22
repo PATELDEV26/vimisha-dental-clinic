@@ -990,6 +990,7 @@ function setupOldRecords() {
   // Open upload modal from multiple places
   const openUploadModal = (patientId) => {
     document.getElementById('oldRecordForm').reset();
+    window.selectedUploadFiles = []; // Clear selected files
     document.getElementById('orPreview').innerHTML = '';
     document.getElementById('orPatientId').value = patientId || '';
     document.getElementById('orPatientSearch').value = '';
@@ -1072,27 +1073,36 @@ function setupOldRecords() {
     }
   });
 
-  // File preview
-  document.getElementById('orPhotos').addEventListener('change', (e) => {
+  // Global variable to keep track of appended files
+  window.selectedUploadFiles = window.selectedUploadFiles || [];
+
+  const handlePhotoSelection = (e) => {
     const preview = document.getElementById('orPreview');
-    preview.innerHTML = '';
     Array.from(e.target.files).forEach((file, i) => {
+      window.selectedUploadFiles.push(file);
       const reader = new FileReader();
       reader.onload = (ev) => {
         const div = document.createElement('div');
         div.className = 'or-preview-item';
+        // Add a small X to delete the photo from the array if needed (simplified for now)
         div.innerHTML = `<img src="${ev.target.result}" alt="Preview">`;
         preview.appendChild(div);
       };
       reader.readAsDataURL(file);
     });
-  });
+    // Reset input so the same file or camera can trigger 'change' again
+    e.target.value = '';
+  };
+
+  document.getElementById('orPhotos').addEventListener('change', handlePhotoSelection);
+  const camInput = document.getElementById('orCamera');
+  if (camInput) camInput.addEventListener('change', handlePhotoSelection);
 
   // Upload form submit
   document.getElementById('oldRecordForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const files = document.getElementById('orPhotos').files;
-    if (!files || files.length === 0) {
+    const files = window.selectedUploadFiles || [];
+    if (files.length === 0) {
       flash('Please select at least one photo', 'error');
       return;
     }
@@ -1152,6 +1162,7 @@ function setupOldRecords() {
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       flash(data.message + ' 📁');
       document.getElementById('oldRecordModal').classList.remove('show');
+      window.selectedUploadFiles = []; // Reset on success
 
       // Reload whatever page is active
       if (currentPatientId) loadProfile(currentPatientId);

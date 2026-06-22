@@ -642,14 +642,17 @@
 
             <!-- Step 3: Photos -->
             <div class="form-group full-width">
-              <label for="orPhotos">Upload Photo(s)</label>
-              <input
-                type="file"
-                id="orPhotos"
-                accept="image/*"
-                multiple
-                class="file-input"
-              />
+              <label>Upload Photo(s)</label>
+              <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+                <label for="orPhotos" class="btn btn-outline" style="flex: 1; text-align: center; cursor: pointer; padding: 10px;">
+                  📁 From Gallery
+                </label>
+                <label for="orCamera" class="btn btn-outline" style="flex: 1; text-align: center; cursor: pointer; background: #e0f2fe; color: #0369a1; border-color: #7dd3fc; padding: 10px;">
+                  📸 Take Photo
+                </label>
+              </div>
+              <input type="file" id="orPhotos" accept="image/*" multiple style="display: none;" />
+              <input type="file" id="orCamera" accept="image/*" capture="environment" style="display: none;" />
               <div class="or-preview" id="orPreview"></div>
             </div>
           </div>

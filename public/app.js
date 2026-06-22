@@ -1434,54 +1434,69 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     
     currentY += 15;
 
-    // Wait for image to load to get dimensions
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = imageSrc;
-    
-    let imageLoaded = true;
-    // We must await image load
-    await new Promise((resolve) => {
-      img.onload = () => { resolve(); };
-      img.onerror = () => {
-        console.warn('Image failed to load:', imageSrc);
-        imageLoaded = false;
-        resolve();
-      };
-    });
-
-    // Calculate dimensions to fit on page
-    const maxWidth = pageWidth - (margin * 2);
-    const maxHeight = pageHeight - currentY - margin;
-    
-    let imgWidth = imageLoaded ? img.width : 400;
-    let imgHeight = imageLoaded ? img.height : 300;
-    
-    // Scale image
-    const widthRatio = maxWidth / imgWidth;
-    const heightRatio = maxHeight / imgHeight;
-    const ratio = Math.min(widthRatio, heightRatio); // prevent overflowing either dimension
-    
-    // Only downscale, don't upscale small images
-    if (ratio < 1) {
-      imgWidth = imgWidth * ratio;
-      imgHeight = imgHeight * ratio;
+    let imagePaths = [];
+    try {
+      const decodedSrc = imageSrc.replace(/&quot;/g, '"');
+      const parsed = JSON.parse(decodedSrc);
+      imagePaths = Array.isArray(parsed) ? parsed : [imageSrc];
+    } catch(e) {
+      imagePaths = [imageSrc];
     }
-    
-    // Draw Border Box around image
-    doc.setDrawColor(156, 213, 255); // #9CD5FF
-    doc.rect(margin - 1, currentY - 1, imgWidth + 2, imgHeight + 2);
-    
-    if (imageLoaded) {
-      // Add image
-      doc.addImage(img, 'AUTO', margin, currentY, imgWidth, imgHeight);
-    } else {
-      // Draw placeholder text
-      doc.setFillColor(240, 240, 240);
-      doc.rect(margin, currentY, imgWidth, imgHeight, 'F');
-      doc.setTextColor(150, 150, 150);
-      doc.setFont("helvetica", "bold");
-      doc.text("Photo Not Available", margin + imgWidth/2, currentY + imgHeight/2, { align: "center" });
+
+    for (let i = 0; i < imagePaths.length; i++) {
+      const src = imagePaths[i];
+      if (!src) continue;
+
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = src;
+      
+      let imageLoaded = true;
+      await new Promise((resolve) => {
+        img.onload = () => { resolve(); };
+        img.onerror = () => {
+          console.warn('Image failed to load:', src);
+          imageLoaded = false;
+          resolve();
+        };
+      });
+
+      const maxWidth = pageWidth - (margin * 2);
+      let maxHeight = pageHeight - currentY - margin;
+      
+      // If there's barely any space left and this is not the first image on the page
+      if (maxHeight < 100 && i > 0) {
+        doc.addPage();
+        currentY = margin;
+        maxHeight = pageHeight - currentY - margin;
+      }
+      
+      let imgWidth = imageLoaded ? img.width : 400;
+      let imgHeight = imageLoaded ? img.height : 300;
+      
+      const widthRatio = maxWidth / imgWidth;
+      const heightRatio = maxHeight / imgHeight;
+      const ratio = Math.min(widthRatio, heightRatio);
+      
+      if (ratio < 1) {
+        imgWidth = imgWidth * ratio;
+        imgHeight = imgHeight * ratio;
+      }
+      
+      doc.setDrawColor(156, 213, 255); 
+      doc.rect(margin - 1, currentY - 1, imgWidth + 2, imgHeight + 2);
+      
+      if (imageLoaded) {
+        doc.addImage(img, 'AUTO', margin, currentY, imgWidth, imgHeight);
+      } else {
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, currentY, imgWidth, imgHeight, 'F');
+        doc.setTextColor(150, 150, 150);
+        doc.setFont("helvetica", "bold");
+        doc.text("Photo Not Available", margin + imgWidth/2, currentY + imgHeight/2, { align: "center" });
+      }
+
+      currentY += imgHeight + 15;
     }
 
     // Footer

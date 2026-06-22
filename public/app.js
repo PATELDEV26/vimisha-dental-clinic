@@ -1117,7 +1117,17 @@ function setupOldRecords() {
     formData.append('record_date', document.getElementById('orRecordDate').value);
     formData.append('description', document.getElementById('orDescription').value.trim());
     for (const file of files) {
-      formData.append('photos', file);
+      if (file.type.startsWith('image/')) {
+        try {
+          const compressed = await compressImage(file, { quality: 0.7, maxWidth: 1600, maxHeight: 1600 });
+          formData.append('photos', compressed);
+        } catch (err) {
+          console.error("Compression failed:", err);
+          formData.append('photos', file);
+        }
+      } else {
+        formData.append('photos', file);
+      }
     }
 
     const submitBtn = e.target.querySelector('button[type="submit"]');
@@ -1127,7 +1137,18 @@ function setupOldRecords() {
 
     try {
       const res = await fetch('/api/old-records/upload', { method: 'POST', body: formData });
-      const data = await res.json();
+      if (res.status === 413) {
+        throw new Error('Upload failed: Photos are too large. Please select smaller photos.');
+      }
+      
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(text || 'Upload failed with unexpected server response');
+      }
+      
       if (!res.ok) throw new Error(data.error || 'Upload failed');
       flash(data.message + ' 📁');
       document.getElementById('oldRecordModal').classList.remove('show');
@@ -1465,4 +1486,43 @@ async function downloadRecordAsPDF(patientName, recordDate, description, uploadD
     console.error(err);
     flash("Failed to generate PDF. Check console.", "error");
   }
+}
+
+// Utility: Client-side Image Compression
+function compressImage(file, { quality = 0.7, maxWidth = 1920, maxHeight = 1920 }) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = event => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width *= ratio;
+          height *= ratio;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(blob => {
+          if (!blob) return reject(new Error('Canvas is empty'));
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          resolve(compressedFile);
+        }, 'image/jpeg', quality);
+      };
+      img.onerror = error => reject(error);
+    };
+    reader.onerror = error => reject(error);
+  });
 }

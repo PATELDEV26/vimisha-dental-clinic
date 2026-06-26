@@ -740,6 +740,7 @@ function setupForms() {
           name,
           description: document.getElementById('treatmentDescription').value.trim() || null,
           created_date: document.getElementById('treatmentCreatedDate').value.trim() || getTodayFormatted(),
+          initial_payment: document.getElementById('treatmentInitialPayment').value.trim() || 0,
         }),
       });
       flash('Treatment created! 🎉');

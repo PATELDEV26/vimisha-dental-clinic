@@ -382,7 +382,7 @@ app.get('/api/patients/:id/treatments', async (req, res) => {
 
 // POST create treatment
 app.post('/api/treatments', async (req, res) => {
-    let { patient_id, name, description, created_date } = req.body;
+    let { patient_id, name, description, created_date, initial_payment } = req.body;
     const pid = patient_id != null ? parseInt(patient_id, 10) : NaN;
     if (!name || (typeof name === 'string' && !name.trim())) return res.status(400).json({ error: 'Treatment name is required' });
     if (!pid || isNaN(pid)) return res.status(400).json({ error: 'Patient ID is required' });
@@ -399,7 +399,23 @@ app.post('/api/treatments', async (req, res) => {
                 created_date: (created_date && created_date.trim()) || getTodayFormatted()
             }
         });
-        res.json({ id: treatment.id, message: 'Treatment created', sittings: [] });
+
+        let sittings = [];
+        const paymentAmount = initial_payment ? parseInt(initial_payment, 10) : 0;
+        if (paymentAmount > 0) {
+            const visit = await prisma.visit.create({
+                data: {
+                    patient_id: pid,
+                    treatment_id: treatment.id,
+                    visit_date: treatment.created_date,
+                    work_done: 'INITIAL PAYMENT',
+                    payment: paymentAmount
+                }
+            });
+            sittings.push(visit);
+        }
+
+        res.json({ id: treatment.id, message: 'Treatment created', sittings });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

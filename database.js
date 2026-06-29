@@ -31,6 +31,7 @@ db.exec(`
     work_done TEXT,
     findings TEXT,
     payment INTEGER DEFAULT 0,
+    payment_method TEXT DEFAULT 'Cash',
     next_appointment_date TEXT,
     next_appointment_time TEXT,
     notes TEXT,
@@ -63,6 +64,12 @@ db.exec(`
 const visitCols = db.prepare("PRAGMA table_info(visits)").all().map(r => r.name);
 if (!visitCols.includes('treatment_id')) {
   db.exec('ALTER TABLE visits ADD COLUMN treatment_id INTEGER');
+}
+
+// Add payment_method to visits if missing
+if (!visitCols.includes('payment_method')) {
+  db.exec("ALTER TABLE visits ADD COLUMN payment_method TEXT DEFAULT 'Cash'");
+  console.log('✅ Added payment_method to visits.');
 }
 
 // Add case_no to old_records if missing (e.g. existing DBs)
@@ -102,8 +109,8 @@ if (count === 0) {
     VALUES (?, ?, ?, ?)
   `);
   const insertVisit = db.prepare(`
-    INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes)
-    VALUES (@patient_id, @treatment_id, @visit_date, @visit_time, @work_done, @findings, @payment, @next_appointment_date, @next_appointment_time, @notes)
+    INSERT INTO visits (patient_id, treatment_id, visit_date, visit_time, work_done, findings, payment, payment_method, next_appointment_date, next_appointment_time, notes)
+    VALUES (@patient_id, @treatment_id, @visit_date, @visit_time, @work_done, @findings, @payment, @payment_method, @next_appointment_date, @next_appointment_time, @notes)
   `);
 
   const seed = db.transaction(() => {
@@ -131,6 +138,7 @@ if (count === 0) {
       work_done: 'Filling 6|64 done. Adv crown cleaning. SCtpal SCtpal 1 done.',
       findings: '',
       payment: 1500,
+      payment_method: 'Cash',
       next_appointment_date: '20/1/26',
       next_appointment_time: '6:00',
       notes: ''
@@ -144,6 +152,7 @@ if (count === 0) {
       work_done: '',
       findings: 'Gingival inflammation, spongy gums, severe bleeding',
       payment: 0,
+      payment_method: 'Cash',
       next_appointment_date: '',
       next_appointment_time: '',
       notes: ''

@@ -479,7 +479,7 @@ function renderTreatmentsContent(patientId) {
           <td>${escapeHtml(s.visit_time) || '—'}</td>
           <td>${escapeHtml(s.work_done) || '—'}</td>
           <td>${escapeHtml(s.findings) || '—'}</td>
-          <td>${s.payment ? '₹' + s.payment.toLocaleString('en-IN') : '—'}</td>
+          <td>${s.payment ? '₹' + s.payment.toLocaleString('en-IN') + '<br><small class="text-muted">(' + escapeHtml(s.payment_method || 'Cash') + ')</small>' : '—'}</td>
           <td>${s.next_appointment_date ? escapeHtml(s.next_appointment_date) + (s.next_appointment_time ? ' at ' + escapeHtml(s.next_appointment_time) : '') : '—'}</td>
           <td>${escapeHtml(s.notes) || '—'}</td>
           <td class="td-actions">
@@ -588,6 +588,7 @@ function openEditSittingModal(visitId) {
   document.getElementById('visitWorkDone').value = sitting.work_done || '';
   document.getElementById('visitFindings').value = sitting.findings || '';
   document.getElementById('visitPayment').value = sitting.payment || 0;
+  document.getElementById('visitPaymentMethod').value = sitting.payment_method || 'Cash';
   document.getElementById('visitNextDate').value = sitting.next_appointment_date || '';
   document.getElementById('visitNextTime').value = sitting.next_appointment_time || '';
   document.getElementById('visitNotes').value = sitting.notes || '';
@@ -667,6 +668,7 @@ function setupForms() {
       work_done: document.getElementById('visitWorkDone').value.trim(),
       findings: document.getElementById('visitFindings').value.trim(),
       payment: parseInt(document.getElementById('visitPayment').value, 10) || 0,
+      payment_method: document.getElementById('visitPaymentMethod').value,
       next_appointment_date: document.getElementById('visitNextDate').value.trim(),
       next_appointment_time: document.getElementById('visitNextTime').value.trim(),
       notes: document.getElementById('visitNotes').value.trim(),
@@ -741,6 +743,7 @@ function setupForms() {
           description: document.getElementById('treatmentDescription').value.trim() || null,
           created_date: document.getElementById('treatmentCreatedDate').value.trim() || getTodayFormatted(),
           initial_payment: document.getElementById('treatmentInitialPayment').value.trim() || 0,
+          payment_method: document.getElementById('treatmentPaymentMethod').value,
         }),
       });
       flash('Treatment created! 🎉');
@@ -977,7 +980,7 @@ async function loadPayments() {
         <td>${escapeHtml(p.patient_name)}</td>
         <td>${escapeHtml(p.case_no)}</td>
         <td>${escapeHtml(p.work_done) || '—'}</td>
-        <td><strong>₹${(p.payment || 0).toLocaleString('en-IN')}</strong></td>
+        <td><strong>₹${(p.payment || 0).toLocaleString('en-IN')}</strong><br><small class="text-muted">(${escapeHtml(p.payment_method || 'Cash')})</small></td>
       </tr>
     `).join('');
   } catch (_) { }

@@ -46,6 +46,7 @@ model Visit {
   work_done             String?
   findings              String?
   payment               Int?       @default(0)
+  payment_method        String?    @default("Cash")
   next_appointment_date String?
   next_appointment_time String?
   notes                 String?

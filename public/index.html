@@ -432,6 +432,14 @@
               <input type="number" id="visitPayment" min="0" value="0" />
             </div>
             <div class="form-group">
+              <label for="visitPaymentMethod">Payment Method</label>
+              <select id="visitPaymentMethod">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Card">Card</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label for="visitNextDate">Next Appointment Date</label>
               <input
                 type="text"
@@ -483,6 +491,14 @@
             <div class="form-group">
               <label for="treatmentInitialPayment">Payment Taken</label>
               <input type="number" id="treatmentInitialPayment" placeholder="Amount in ₹" min="0" />
+            </div>
+            <div class="form-group">
+              <label for="treatmentPaymentMethod">Payment Method</label>
+              <select id="treatmentPaymentMethod">
+                <option value="Cash">Cash</option>
+                <option value="UPI">UPI</option>
+                <option value="Card">Card</option>
+              </select>
             </div>
           </div>
           <button type="submit" class="btn btn-primary btn-lg">💾 Create Treatment</button>

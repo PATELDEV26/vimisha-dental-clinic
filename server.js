@@ -382,7 +382,7 @@ app.get('/api/patients/:id/treatments', async (req, res) => {
 
 // POST create treatment
 app.post('/api/treatments', async (req, res) => {
-    let { patient_id, name, description, created_date, initial_payment } = req.body;
+    let { patient_id, name, description, created_date, initial_payment, payment_method } = req.body;
     const pid = patient_id != null ? parseInt(patient_id, 10) : NaN;
     if (!name || (typeof name === 'string' && !name.trim())) return res.status(400).json({ error: 'Treatment name is required' });
     if (!pid || isNaN(pid)) return res.status(400).json({ error: 'Patient ID is required' });
@@ -409,7 +409,8 @@ app.post('/api/treatments', async (req, res) => {
                     treatment_id: treatment.id,
                     visit_date: treatment.created_date,
                     work_done: 'INITIAL PAYMENT',
-                    payment: paymentAmount
+                    payment: paymentAmount,
+                    payment_method: payment_method || 'Cash'
                 }
             });
             sittings.push(visit);
@@ -526,7 +527,7 @@ app.get('/api/treatments/:id/pdf', async (req, res) => {
                 y = margin;
             }
 
-            const paymentStr = s.payment ? 'RS.' + Number(s.payment).toLocaleString('en-IN') : '-';
+            const paymentStr = s.payment ? 'RS.' + Number(s.payment).toLocaleString('en-IN') + ' (' + safe(s.payment_method || 'CASH') + ')' : '-';
             const nextApptStr = s.next_appointment_date ? safe(s.next_appointment_date) : '-';
             const cells = [safe(s.visit_date), safe(s.visit_time), safe(s.work_done), safe(s.findings), paymentStr, nextApptStr, safe(s.notes)];
 
@@ -641,7 +642,7 @@ app.get('/api/visits/upcoming', async (req, res) => {
 
 // POST create visit (seating) – requires treatment_id
 app.post('/api/visits', async (req, res) => {
-    let { treatment_id, visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    let { treatment_id, visit_date, visit_time, work_done, findings, payment, payment_method, next_appointment_date, next_appointment_time, notes } = req.body;
     if (!treatment_id) return res.status(400).json({ error: 'Treatment ID is required' });
 
     try {
@@ -663,6 +664,7 @@ app.post('/api/visits', async (req, res) => {
                 work_done,
                 findings,
                 payment: payment ? parseInt(payment) : 0,
+                payment_method: payment_method || 'Cash',
                 next_appointment_date,
                 next_appointment_time,
                 notes
@@ -677,7 +679,7 @@ app.post('/api/visits', async (req, res) => {
 // PUT update visit (seating)
 app.put('/api/visits/:id', async (req, res) => {
     const id = parseInt(req.params.id);
-    let { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+    let { visit_date, visit_time, work_done, findings, payment, payment_method, next_appointment_date, next_appointment_time, notes } = req.body;
 
     try {
         const visit = await prisma.visit.findUnique({ where: { id } });
@@ -695,6 +697,7 @@ app.put('/api/visits/:id', async (req, res) => {
                 work_done: work_done !== undefined ? work_done : visit.work_done,
                 findings: findings !== undefined ? findings : visit.findings,
                 payment: payment !== undefined ? (parseInt(payment, 10) || 0) : visit.payment,
+                payment_method: payment_method !== undefined ? payment_method : visit.payment_method,
                 next_appointment_date: next_appointment_date !== undefined ? next_appointment_date : visit.next_appointment_date,
                 next_appointment_time: next_appointment_time !== undefined ? next_appointment_time : visit.next_appointment_time,
                 notes: notes !== undefined ? notes : visit.notes
@@ -733,6 +736,7 @@ app.get('/api/payments', async (req, res) => {
             patient_id: r.patient_id,
             visit_date: r.visit_date,
             payment: r.payment,
+            payment_method: r.payment_method,
             work_done: r.work_done,
             patient_name: r.patient.name,
             case_no: r.patient.case_no

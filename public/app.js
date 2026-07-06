@@ -545,22 +545,25 @@ function renderTreatmentsContent(patientId) {
     return;
   }
 
-  container.innerHTML = treatments.map(t => `
+  container.innerHTML = treatments.map(t => {
+    const totalPayment = (t.sittings || []).reduce((sum, s) => sum + (s.payment || 0), 0);
+    return `
     <div class="treatment-card" data-treatment-id="${t.id}">
       <div class="treatment-card-header">
         <div>
           <h4 class="treatment-name">${escapeHtml(t.name)}</h4>
           ${t.description ? `<p class="treatment-description">${escapeHtml(t.description)}</p>` : ''}
-          <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
+          <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')} &nbsp;|&nbsp; <strong>Total Paid: ₹${totalPayment.toLocaleString('en-IN')}</strong></span>
         </div>
         <div class="treatment-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-action="view-treatment" data-treatment-id="${t.id}">👁️ View Details & Payments</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
           <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit</button>
           <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete</button>
         </div>
       </div>
     </div>
-  `).join('');
+  `}).join('');
 }
 
 function openAddSittingModal(treatmentId, treatmentName) {

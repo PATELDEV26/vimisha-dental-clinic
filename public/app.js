@@ -654,29 +654,23 @@ function setupForms() {
     const treatmentId = document.getElementById('visitTreatmentId').value;
 
     const body = {
-      visit_date: document.getElementById('visitDate').value.trim(),
-      visit_time: document.getElementById('visitTime').value.trim(),
-      work_done: document.getElementById('visitWorkDone').value.trim(),
-      findings: document.getElementById('visitFindings').value.trim(),
+      visit_date: document.getElementById('visitDate').value.trim() || getTodayFormatted(),
       payment: parseInt(document.getElementById('visitPayment').value, 10) || 0,
       payment_method: document.getElementById('visitPaymentMethod').value,
-      next_appointment_date: document.getElementById('visitNextDate').value.trim(),
-      next_appointment_time: document.getElementById('visitNextTime').value.trim(),
-      notes: document.getElementById('visitNotes').value.trim(),
     };
 
     try {
       if (editId) {
         await api(`/api/visits/${editId}`, { method: 'PUT', body: JSON.stringify(body) });
-        flash('Sitting updated! ✅');
+        flash('Payment updated! ✅');
       } else {
         const tid = treatmentId ? parseInt(treatmentId, 10) : 0;
-        if (!tid) { flash('Please open a treatment and use Add Sitting.', 'error'); return; }
+        if (!tid) { flash('Please open a treatment and use Add Payment.', 'error'); return; }
         await api('/api/visits', { method: 'POST', body: JSON.stringify({ treatment_id: tid, ...body }) });
-        flash('Sitting recorded successfully! 🎉');
+        flash('Payment recorded successfully! 🎉');
       }
       closeVisitModal();
-      document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Sitting';
+      document.getElementById('visitFormSubmitBtn').innerHTML = '<span class="icon">💾</span> Save Payment';
       if (currentPatientId) loadProfile(currentPatientId, { keepTreatmentView: currentTreatmentViewId });
     } catch (_) { }
   });

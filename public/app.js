@@ -472,16 +472,12 @@ function renderTreatmentsContent(patientId) {
     }
     const sittings = t.sittings || [];
     const sittingsRows = sittings.length === 0
-      ? `<tr><td colspan="8" class="text-center empty-state">No sittings yet. Add one below.</td></tr>`
+      ? `<tr><td colspan="4" class="text-center empty-state">No payments recorded yet.</td></tr>`
       : sittings.map(s => `
         <tr>
           <td>${escapeHtml(s.visit_date)}</td>
-          <td>${escapeHtml(s.visit_time) || '—'}</td>
-          <td>${escapeHtml(s.work_done) || '—'}</td>
-          <td>${escapeHtml(s.findings) || '—'}</td>
-          <td>${s.payment ? '₹' + s.payment.toLocaleString('en-IN') + '<br><small class="text-muted">(' + escapeHtml(s.payment_method || 'Cash') + ')</small>' : '—'}</td>
-          <td>${s.next_appointment_date ? escapeHtml(s.next_appointment_date) + (s.next_appointment_time ? ' at ' + escapeHtml(s.next_appointment_time) : '') : '—'}</td>
-          <td>${escapeHtml(s.notes) || '—'}</td>
+          <td><strong>${s.payment ? '₹' + s.payment.toLocaleString('en-IN') : '₹0'}</strong></td>
+          <td>${escapeHtml(s.payment_method || 'Cash')}</td>
           <td class="td-actions">
             <button type="button" class="btn btn-outline btn-sm" data-action="edit-sitting" data-visit-id="${s.id}">✏️ Edit</button>
             <button type="button" class="btn btn-danger btn-sm" data-action="delete-sitting" data-visit-id="${s.id}">🗑️ Delete</button>
@@ -497,23 +493,20 @@ function renderTreatmentsContent(patientId) {
           ${t.description ? `<p class="treatment-description">${escapeHtml(t.description)}</p>` : ''}
           <span class="treatment-date">Started: ${escapeHtml(t.created_date || '—')}</span>
           <div class="treatment-detail-actions">
-            <button type="button" class="btn btn-primary" data-action="add-sitting" data-treatment-id="${t.id}" data-treatment-name="${escapeHtml(t.name)}">➕ Add Sitting</button>
+            <button type="button" class="btn btn-primary" data-action="add-sitting" data-treatment-id="${t.id}" data-treatment-name="${escapeHtml(t.name)}">➕ Add Payment</button>
             <button type="button" class="btn btn-outline btn-sm" data-action="download-treatment-pdf" data-treatment-id="${t.id}">⬇ Download PDF</button>
             <button type="button" class="btn btn-outline btn-sm" data-action="edit-treatment" data-treatment-id="${t.id}">✏️ Edit treatment</button>
             <button type="button" class="btn btn-danger btn-sm" data-action="delete-treatment" data-treatment-id="${t.id}" data-patient-id="${patientId}" data-treatment-name="${escapeHtml(t.name)}">🗑️ Delete treatment</button>
           </div>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap mt-16">
+          <h4 style="margin-bottom: 8px;">Payment History</h4>
           <table class="data-table sitting-table">
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Time</th>
-                <th>Work Done</th>
-                <th>Findings</th>
                 <th>Payment (₹)</th>
-                <th>Next Appt</th>
-                <th>Notes</th>
+                <th>Method</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -567,43 +560,38 @@ function renderTreatmentsContent(patientId) {
 }
 
 function openAddSittingModal(treatmentId, treatmentName) {
-  const tid = parseInt(treatmentId, 10);
-  if (!tid) return;
-  currentTreatmentId = tid;
-  document.getElementById('visitModalTitle').textContent = '➕ Add Sitting' + (treatmentName ? ` — ${treatmentName}` : '');
   document.getElementById('visitForm').reset();
+  document.getElementById('visitTreatmentId').value = treatmentId;
   document.getElementById('visitEditId').value = '';
-  document.getElementById('visitTreatmentId').value = tid;
   document.getElementById('visitDate').value = getTodayFormatted();
-  document.getElementById('visitFormSubmitBtn').textContent = '💾 Save Sitting';
+  document.getElementById('visitModalTitle').innerText = '➕ Add Payment for: ' + truncateText(treatmentName, 30);
+  document.getElementById('visitFormSubmitBtn').innerHTML = '<span class="icon">💾</span> Save Payment';
   document.getElementById('visitModal').classList.add('show');
 }
 
 function openEditSittingModal(visitId) {
-  const id = parseInt(visitId, 10);
-  const sitting = currentProfileTreatments.flatMap(t => (t.sittings || []).map(s => ({ ...s, treatment_id: t.id }))).find(s => s.id === id);
-  if (!sitting) return;
-  document.getElementById('visitModalTitle').textContent = '✏️ Edit Sitting';
-  document.getElementById('visitEditId').value = sitting.id;
-  document.getElementById('visitTreatmentId').value = sitting.treatment_id;
-  document.getElementById('visitDate').value = sitting.visit_date || '';
-  document.getElementById('visitTime').value = sitting.visit_time || '';
-  document.getElementById('visitWorkDone').value = sitting.work_done || '';
-  document.getElementById('visitFindings').value = sitting.findings || '';
-  document.getElementById('visitPayment').value = sitting.payment || 0;
-  document.getElementById('visitPaymentMethod').value = sitting.payment_method || 'Cash';
-  document.getElementById('visitNextDate').value = sitting.next_appointment_date || '';
-  document.getElementById('visitNextTime').value = sitting.next_appointment_time || '';
-  document.getElementById('visitNotes').value = sitting.notes || '';
-  document.getElementById('visitFormSubmitBtn').textContent = '💾 Update Sitting';
+  const visit = currentProfileTreatments
+    .flatMap(t => t.sittings || [])
+    .find(v => v.id === parseInt(visitId, 10));
+  if (!visit) return;
+
+  document.getElementById('visitForm').reset();
+  document.getElementById('visitEditId').value = visit.id;
+  document.getElementById('visitTreatmentId').value = visit.treatment_id;
+  document.getElementById('visitDate').value = visit.visit_date || '';
+  document.getElementById('visitPayment').value = visit.payment || 0;
+  document.getElementById('visitPaymentMethod').value = visit.payment_method || 'Cash';
+
+  document.getElementById('visitModalTitle').innerText = '✏️ Edit Payment';
+  document.getElementById('visitFormSubmitBtn').innerHTML = '<span class="icon">💾</span> Update Payment';
   document.getElementById('visitModal').classList.add('show');
 }
 
 async function deleteSitting(visitId, patientId) {
-  if (!confirm('Delete this sitting record?')) return;
+  if (!confirm('Delete this payment record?')) return;
   try {
     await api(`/api/visits/${visitId}`, { method: 'DELETE' });
-    flash('Sitting deleted.');
+    flash('Payment deleted.');
     loadProfile(patientId != null ? patientId : currentPatientId, { keepTreatmentView: currentTreatmentViewId });
   } catch (_) { }
 }
@@ -616,7 +604,7 @@ function openEditTreatmentModal(id, name, description) {
 }
 
 async function deleteTreatment(treatmentId, patientId, name) {
-  if (!confirm(`Delete treatment "${name}" and all its sittings?`)) return;
+  if (!confirm(`Delete treatment "${name}" and all its payments?`)) return;
   try {
     await api(`/api/treatments/${treatmentId}`, { method: 'DELETE' });
     flash('Treatment deleted.');

@@ -7,8 +7,11 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
         try {
+            // Ensure payment_method exists on live Vercel Postgres DB
+            try { await sql`ALTER TABLE visits ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash'`; } catch (e) { }
+
             const rows = await sql`
-                SELECT v.id, v.patient_id, v.visit_date, v.payment, v.work_done, 
+                SELECT v.id, v.patient_id, v.visit_date, v.payment, v.payment_method, v.work_done, 
                        p.name as patient_name, p.case_no
                 FROM visits v
                 JOIN patients p ON v.patient_id = p.id

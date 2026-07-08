@@ -392,11 +392,11 @@
       </section>
     </main>
 
-    <!-- ── Visit / Seating Modal ────────────────────────────────────── -->
+    <!-- ── Visit / Payment Modal ────────────────────────────────────── -->
     <div class="modal-overlay" id="visitModal">
       <div class="modal">
         <div class="modal-header">
-          <h3 id="visitModalTitle">➕ Add Sitting</h3>
+          <h3 id="visitModalTitle">Add Payment</h3>
           <button class="modal-close" id="closeModal">&times;</button>
         </div>
         <form id="visitForm">
@@ -404,29 +404,10 @@
           <input type="hidden" id="visitEditId" />
           <div class="form-grid">
             <div class="form-group">
-              <label for="visitDate">Visit Date</label>
+              <label for="visitDate">Payment Date</label>
               <input type="text" id="visitDate" placeholder="e.g. 9/3/26" />
             </div>
-            <div class="form-group">
-              <label for="visitTime">Visit Time</label>
-              <input type="text" id="visitTime" placeholder="e.g. 10:30" />
-            </div>
-            <div class="form-group full-width">
-              <label for="visitWorkDone">Work Done</label>
-              <textarea
-                id="visitWorkDone"
-                rows="3"
-                placeholder="Describe work done..."
-              ></textarea>
-            </div>
-            <div class="form-group full-width">
-              <label for="visitFindings">Clinical Findings</label>
-              <textarea
-                id="visitFindings"
-                rows="2"
-                placeholder="e.g. Gingival inflammation, bleeding..."
-              ></textarea>
-            </div>
+
             <div class="form-group">
               <label for="visitPayment">Payment Received (₹)</label>
               <input type="number" id="visitPayment" min="0" value="0" />
@@ -439,29 +420,10 @@
                 <option value="Card">Card</option>
               </select>
             </div>
-            <div class="form-group">
-              <label for="visitNextDate">Next Appointment Date</label>
-              <input
-                type="text"
-                id="visitNextDate"
-                placeholder="e.g. 15/4/26"
-              />
-            </div>
-            <div class="form-group">
-              <label for="visitNextTime">Next Appointment Time</label>
-              <input type="text" id="visitNextTime" placeholder="e.g. 11:00" />
-            </div>
-            <div class="form-group full-width">
-              <label for="visitNotes">Reminder Notes</label>
-              <textarea
-                id="visitNotes"
-                rows="2"
-                placeholder="Any notes..."
-              ></textarea>
-            </div>
+
           </div>
-          <button type="submit" class="btn btn-primary btn-lg" id="visitFormSubmitBtn">
-            💾 Save Sitting
+          <button type="submit" class="btn btn-primary btn-block mt-16" id="visitFormSubmitBtn">
+            <span class="icon">💾</span> Save Payment
           </button>
         </form>
       </div>

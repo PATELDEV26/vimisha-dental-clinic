@@ -22,24 +22,20 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === 'PUT') {
-        let { visit_date, visit_time, work_done, findings, payment, next_appointment_date, next_appointment_time, notes } = req.body;
+        let { visit_date, payment, payment_method } = req.body;
 
         try {
-            work_done = (work_done || '').toUpperCase();
-            findings = (findings || '').toUpperCase();
-            notes = (notes || '').toUpperCase();
+            // Ensure payment_method exists on live Vercel Postgres DB
+            try { await sql`ALTER TABLE visits ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT 'Cash'`; } catch (e) { }
 
             await sql`
                 UPDATE visits 
-                SET visit_date = ${visit_date}, visit_time = ${visit_time}, 
-                    work_done = ${work_done}, findings = ${findings}, 
+                SET visit_date = ${visit_date}, 
                     payment = ${payment ? parseInt(payment) : 0}, 
-                    next_appointment_date = ${next_appointment_date}, 
-                    next_appointment_time = ${next_appointment_time}, 
-                    notes = ${notes}
+                    payment_method = ${payment_method || 'Cash'}
                 WHERE id = ${numericId}
             `;
-            return res.json({ message: 'Visit updated' });
+            return res.json({ message: 'Payment updated' });
         } catch (err) {
             return res.status(500).json({ error: err.message });
         }
